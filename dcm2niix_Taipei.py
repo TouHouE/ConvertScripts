@@ -1,3 +1,4 @@
+import argparse
 import traceback
 import multiprocessing as mp
 import json
@@ -34,6 +35,7 @@ FilePathPack = NewType('FilePathPack', tuple[pyd.FileDataset, str])
 class Partition:
     PID: int
     patient_list: list[str]
+    args: argparse.Namespace
 def get_desc(dcm: pyd.FileDataset) -> str:
     """
         Trying to get the description from an ISP Dicom file, the possible tag are (0x0008, 0x1032) and (0x0008, 0x103e)
@@ -57,7 +59,7 @@ def _get_cp(dcm: pyd.FileDataset) -> int | float:
             if isinstance(cp, float) or isinstance(cp, int):
                 return cp
             if '%' in cp:
-                return cp[:-1]
+                return float(cp.replace('%', ''))
 
 
     return .0
@@ -254,7 +256,7 @@ class ISPContainer:
         return ctxt
 
 
-def commandline(ct_output_path: str, buf_path: str, verbose: int = 1):
+def commandline(ct_output_path: str, buf_path: str, verbose: int = 0, dcm2niix_path: str = './lib/dcm2niix.exe'):
     if verbose == 1:
         kwargs = dict()
         print(f'{" DCM2NIIX INFO ":=^40}')
@@ -263,7 +265,7 @@ def commandline(ct_output_path: str, buf_path: str, verbose: int = 1):
 
 
     sp.call(
-        ['./lib/dcm2niix.exe',
+        [dcm2niix_path,
          '-w', '1',  # if target is already, 1:overwrite it. 0:skip it
          '-z', 'y',  # Do .gz compress,
          '-o', ct_output_path,
@@ -346,6 +348,7 @@ class CTContainer:
             snum: int,
             cp: int | float,
             fix_tag0008_0030: bool,
+            args: argparse.Namespace,
             verbose: int = 1, buf_dir='./buf', output_dir='./out'
     ) -> None:
         """
@@ -371,6 +374,7 @@ class CTContainer:
         cand_cnt = 0
         self.buf_path: str = f'{buf_dir}/{pid}/{snum}/{uid}/{cp}/cand_0'
         self.ct_output_path: str = f'{output_dir}/{pid}/{snum}/{uid}/{cp}/cand_0'
+        self.args = args
 
         # Store all candidate
         while os.path.exists(self.buf_path):
@@ -435,7 +439,7 @@ class CTContainer:
         :return:
         """
         # Using dcm2niix to convert dicom file into nii.gz file.
-        commandline(self.ct_output_path, self.buf_path, self.verbose)
+        commandline(self.ct_output_path, self.buf_path, self.verbose, dcm2niix_path=args.dcm2niix)
         self.final_path = list(filter(lambda x: not x.endswith('.json'), os.listdir(self.ct_output_path)))[0]
         self.nifit_ct = nib.load(f'{self.ct_output_path}/{self.final_path}')
         self.final_path = f'{self.ct_output_path}/{self.final_path}'
@@ -520,14 +524,16 @@ def process_ct(ct_root: str, pid: str, output_dir: str = './out', buf_dir: str =
     return pid_ct_list, error_ct_list
 
 
-def single_main(pid: str, ct_path_args=None, isp_path_args=None) -> list:
+def single_main(pid: str, args: argparse.Namespace, ct_path_args=None, isp_path_args=None) -> list:
     if ct_path_args is None:
-        ct_path_args = dict(output_dir=r'H:\502CT\out', buf_dir=r'H:\502CT\buf')
+        ct_path_args = dict(output_dir=args.out_dir, buf_dir=args.buf_dir)
     if isp_path_args is None:
-        isp_path_args = dict(output_dir=r'H:\502CT\mask')
+        isp_path_args = dict(output_dir=args.mask_dir)
 
-    ct_root = r'F:\CCTA'
-    isp_root = r'F:\CCTA Result'
+    # ct_root = r'F:\CCTA'
+    # isp_root = r'F:\CCTA Result'
+    ct_root = args.data_root
+    isp_root = args.isp_root
     # Start Loading all CT dicom file and ISP dicom file into program.
     ct_pack = process_ct(ct_root, pid, **ct_path_args)
     ct_list: list[DeDuplicateCT | CTContainer] = ct_pack[0]
@@ -580,12 +586,12 @@ def single_main(pid: str, ct_path_args=None, isp_path_args=None) -> list:
                 ct_list[idx] = ct
 
     offal_ct = list(filter(lambda _ct: not _ct.has_pair, ct_list))
-    print(f'unpair ISP: {len(offal_isp)}')
-    print(f'unpair CT : {len(offal_ct)}')
-    print(f'Successful Pairs: {len(pair_list)}')
+    # print(f'unpair ISP: {len(offal_isp)}')
+    # print(f'unpair CT : {len(offal_ct)}')
+    # print(f'Successful Pairs: {len(pair_list)}')
     # breakpoint()
     if len(offal_isp) > 0 or len(offal_ct) > 0:
-        unpair_path = rf'H:\502CT\meta/unpair/{pid}'
+        unpair_path = rf'{args.meta_dir}/unpair/{pid}'
         os.makedirs(unpair_path, exist_ok=True)
         unpair_obj = dict(isp=[], ct=[])
         for oisp in offal_isp:
@@ -599,36 +605,35 @@ def single_main(pid: str, ct_path_args=None, isp_path_args=None) -> list:
 
 
 def full_pid(partition: Partition) -> list:
-    process_id = partition.PID
+    proc_id = partition.PID
     pid_list = partition.patient_list
+    args: argparse.Namespace = partition.args
     n_pid = len(pid_list)
-    pidx_len_for_show = np.log10(n_pid) // 1 + 1
     results = []
 
     for pidx, pid in enumerate(pid_list):
         t0 = dt.datetime.now()
-        print(f'Process-{process_id:02}| Start {pid} {pidx}/{n_pid}, time:{t0:%Y-%m-%d %H:%M:%S}')
+        print(f'Process-{proc_id:02}|[Start]|[{pidx}/{n_pid}]|{pid} , time:{t0:%Y-%m-%d %H:%M:%S}')
         try:
-            pid_result, ct_error_list = single_main(pid)
+            pid_result, ct_error_list = single_main(pid, args)
             results.extend(pid_result)
-            with open(rf'H:\502CT\meta\{pid}.json', 'w+') as jout:
+            with open(rf'{args.meta_dir}\{pid}.json', 'w+') as jout:
                 json.dump(pid_result, jout)
-            with open(rf'H:\502CT\meta\file_error\{pid}.txt', 'w+') as fout:
+            with open(rf'{args.err_dir}\{pid}.txt', 'a+') as fout:
                 for err_file in ct_error_list:
-                    fout.write(f'{err_file}\n')
-            suffix = 'End'
+                    fout.write(f'[{t0:%Y-%m-%d %H:%M:%S}]|{err_file}\n')
+            suffix = 'Done'
 
             # with open()
         except Exception as e:
-
             # traceback.
-            with open(rf'H:\502CT\meta\on_error\{pid}.txt', 'w+') as fout:
+            with open(rf'{args.err_dir}\{pid}.txt', 'a+') as fout:
                 fout.write(f'{e.args}\n')
                 fout.write(traceback.format_exc())
-            suffix = 'On Error'
+            suffix = 'Error'
 
         tn = dt.datetime.now()
-        print(f'Process-{process_id:02}| {suffix}   {pid} {pidx}/{n_pid}, time:{tn:%Y-%m-%d %H:%M:%S}, cost:{tn - t0}')
+        print(f'Process-{proc_id:02}|[{suffix:^5}]|[{pidx}/{n_pid}]|{pid}, time:{tn:%Y-%m-%d %H:%M:%S}, cost:{tn - t0}')
     return results
 
 
@@ -646,21 +651,55 @@ def test_main():
     #     json.dump(sample_pair, jout)
 
 
-def start_main():
-    done = [name.split('.')[0] for name in os.listdir(r'H:\502CT\meta') if name.endswith('.json')]
+def processed_data_list(args: argparse.Namespace) -> list:
+    meta_dir = args.meta_dir
+    pdata = [name.split('.')[0] for name in os.listdir(meta_dir) if name.endswith('.json')]
+    return pdata
 
-    nproc = 3
+
+def start_main(args: argparse.Namespace):
+    # done = [name.split('.')[0] for name in os.listdir(r'H:\502CT\meta') if name.endswith('.json')]
+    done = processed_data_list(args)
+    if (w_ratio := args.worker_ratio) is None:
+        nproc = args.num_workers
+    else:
+        nproc = mp.cpu_count() // w_ratio
+
     sample_pair = dict(name=DIGIT2LABEL_NAME, data=[])
-    legal_file_patint = list(filter(lambda x: os.path.isdir(rf'F:\CCTA\{x}') and x not in done, os.listdir(r'F:\CCTA')))
+    legal_file_patint = list(filter(lambda x: os.path.isdir(rf'{args.data_root}\{x}') and x not in done, os.listdir(args.data_root)))
     sub_world = np.array_split(legal_file_patint, nproc)
-    sub_world = [Partition(PID=i + 1, patient_list=sworld) for i, sworld in enumerate(sub_world)]
+    sub_world = [Partition(PID=i, patient_list=sworld, args=args) for i, sworld in enumerate(sub_world)]
 
     with mp.Pool(processes=nproc) as pool:
         sample_pair['data'].extend(pool.map(full_pid, (sub_world)))
 
-    with open(r'H:\502CT\meta\sample.json', 'w+') as jout:
+    with open(rf'{args.meta_dir}\sample.json', 'w+') as jout:
         json.dump(sample_pair, jout)
 
 
+def mask_sure_folder_exist(args):
+    os.makedirs(f'{args.meta_dir}')
+    os.makedirs(f'{args.out_dir}')
+    os.makedirs(f'{args.buf_dir}')
+    os.makedirs(f'{args.mask_dir}')
+    os.makedirs(f'{args.err_dir}')
+
+
+
 if __name__ == '__main__':
+    # from argparse import ArgumentParser
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--data_root', type=str)
+    parser.add_argument('--isp_root', type=str)
+    parser.add_argument('--num_workers', type=int, default=1)
+    parser.add_argument('--worker_ratio', type=float, default=None)
+    # parser.add_argument('--dst_root', type=str, default='./NiiHsinChu')
+    parser.add_argument('--out_dir', default='./NiiTaipei/out')
+    parser.add_argument('--buf_dir', default='./NiiTaipei/buf')
+    parser.add_argument('--mask_dir', defult='./NiiTaipei/mask')
+    parser.add_argument('--meta_dir', default='./NiiTaipei/meta')
+    parser.add_argument('--err_dir', default='./NiiTaipei/err')
+    parser.add_argument('--dcm2niix', default='./lib/dcm2niix.exe')
+    args = parser.parse_args()
+    mask_sure_folder_exist(args)
     start_main()

@@ -94,11 +94,9 @@ def middle(partition):
         print(f'Process-{current_pid}|[{status:^5}]|{idx}/{total}|Cost: {tn - t0}|{patient_root}, {get_now(tn)}')
 
 
-def start_point(n_proc: int, out_dir='./out/hsinchu', buf_dir='./buf/hsinchu', err_dir='./err/hsinchu'):
+def start_point(n_proc: int, out_dir, buf_dir, err_dir, args):
     stack = [
-        r'G:\RAW\batch1',
-        r"G:\RAW\batch2-2024-04-30\202309CCTA(13例)", r"G:\RAW\batch2-2024-04-30\202310CCTA(14例)",
-        r"G:\RAW\batch2-2024-04-30\202311CCTA(16例)", r"G:\RAW\batch2-2024-04-30\202312CCTA(26例)",
+        args.data_root
     ]
 
     for task_root in stack:
@@ -114,16 +112,31 @@ def start_point(n_proc: int, out_dir='./out/hsinchu', buf_dir='./buf/hsinchu', e
             pooler.map(middle, partitions)
 
 
-def task1():
-    nproc = mp.cpu_count() // 4
-    out_dir = r'G:\NiiHsinChu\out'
-    buf_dir = r'G:\NiiHsinChu\buf'
-    err_dir = r'G:\NiiHsinChu\err'
+def task1(args):
+    if (w_ratio := args.worker_ratio) is None:
+        nproc = args.num_workders
+    else:
+        nproc = mp.cpu_count() // w_ratio
+
+    out_dir = args.out_dir
+    buf_dir = args.buf_dir
+    err_dir = args.err_dir
     for dir in [out_dir, buf_dir, err_dir]:
         os.makedirs(dir, exist_ok=True)
 
-    start_point(nproc, out_dir, buf_dir, err_dir)
+    start_point(nproc, out_dir, buf_dir, err_dir, args)
 
 
 if __name__ == '__main__':
-    task1()
+    from argparse import ArgumentParser
+    parser = ArgumentParser()
+    parser.add_argument('--data_root', type=str)
+    parser.add_argument('--num_workers', type=int, default=1)
+    parser.add_argument('--worker_ratio', type=float, default=None)
+    # parser.add_argument('--dst_root', type=str, default='./NiiHsinChu')
+    parser.add_argument('--out_dir', default='./NiiHsinChu/out')
+    parser.add_argument('--buf_dir', default='./NiiHsinChu/buf')
+    parser.add_argument('--err_dir', default='./NiiHsinChu/err')
+    args = parser.parse_args()
+
+    task1(args)
