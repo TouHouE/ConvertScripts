@@ -1,0 +1,666 @@
+import traceback
+import multiprocessing as mp
+import json
+from functools import partial
+import datetime as dt
+import subprocess as sp
+import numpy as np
+from typing import Union, Tuple, Any, Callable, List, TypeVar, NewType
+import pydicom as pyd
+import os
+import re
+import nibabel as nib
+import isp_helper as ISPH
+import dataclasses
+import shutil
+
+DIGIT2LABEL_NAME = {
+    1: 'RightAtrium',
+    2: 'RightVentricle',
+    3: 'LeftAtrium',
+    4: 'LeftVentricle',
+    5: 'MyocardiumLV',
+    6: 'Aorta',
+    7: 'Coronaries8',
+    8: 'Fat',
+    9: 'Bypass',
+    10: 'Plaque'
+}
+LABEL_NAME2DIGIT = {value: key for key, value in DIGIT2LABEL_NAME.items()}
+CardiacPhase = NewType('CardiacPhase', Union[float, int])
+FilePathPack = NewType('FilePathPack', tuple[pyd.FileDataset, str])
+
+@dataclasses.dataclass
+class Partition:
+    PID: int
+    patient_list: list[str]
+def get_desc(dcm: pyd.FileDataset) -> str:
+    """
+        Trying to get the description from an ISP Dicom file, the possible tag are (0x0008, 0x1032) and (0x0008, 0x103e)
+    :param dcm: Single ISP dicom file
+    :return: The description of the isp dicom, or empty string if no description could be found
+    """
+    for tag in [(0x0008, 0x1032), (0x0008, 0x103e)]:
+        desc = dcm.get(tag)
+        if desc is not None:
+            return desc.value
+    print(dcm)
+    return ''
+
+
+def _get_cp(dcm: pyd.FileDataset) -> int | float:
+    # cp = None
+    for tag_candidate in [(0x0020, 0x9241), (0x01f1, 0x1041), (0x7005, 0x1004), (0x7005, 0x1005)]:
+        cp = dcm.get(tag_candidate)
+        if cp is not None:
+            cp = cp.value
+            if isinstance(cp, float) or isinstance(cp, int):
+                return cp
+            if '%' in cp:
+                return cp[:-1]
+
+
+    return .0
+
+
+def shutil_copy(src_pack: tuple[pyd.FileDataset, str], dst: str) -> None:
+    shutil.copy(src_pack[1], dst)
+
+
+def fix_copy(src_pack: tuple[pyd.FileDataset, str], dst: str) -> None:
+    """
+        Usually only de-identify by Siemens device will use this function to ignore Study Time not equally problem.
+    :param src_pack:
+    :param dst:
+    :return:
+    """
+    dcm = src_pack[0]
+    # dcm = pyd.dcmread(src)
+    dcm[(0x0008, 0x0030)].value = dt.time(0, 0, 0, 0)
+    dcm.save_as(dst)
+
+
+def get_tag(dcm: pyd.FileDataset, tag: Tuple[int, int], default_value: Any = None, need_state: bool = True) -> tuple[str, Any | None] | Union[Any, None]:
+    if (info := dcm.get(tag)) is not None:
+        return 'Normal', info.value if need_state else info.value
+    return 'Unreadable', default_value if need_state else default_value
+
+
+def legal_dcm_path(path: str) -> bool:
+    """
+    Check if a path is legal, if got <instance number>[<number>].dcm mean duplication file.
+    the sub name must dcm.
+    :param path:
+    :return : is legal or not
+    """
+    file_name = re.split('[/\\\]', path)[-1]
+    is_dcm = path.endswith('.dcm')
+    # not_dup = re.match('\[[1-9]{1,}\]', path.split('.')[0][-3:]) is None
+    not_dup = file_name.split('.')[0].isdigit()
+    return is_dcm and not_dup
+
+
+def find_isp_uid(isp: pyd.FileDataset) -> str:
+    def _make_sure_is_str(_str):
+        if isinstance(_str, str):
+            return _str
+        else:
+            return _str.decode('ISO_IR 100', 'strict')
+    uid_pack = isp.get((0x0008, 0x1115))
+    if uid_pack is None:
+        return _make_sure_is_str(isp.get((0x01e1, 0x1046)).value).split('_')[-3]
+
+    return _make_sure_is_str(uid_pack.value[0][(0x0020, 0x000e)].value)
+
+
+class ISPContainer:
+    shape: tuple[int, int, int] | list[int, int, int]
+    final_path: dict[str, str]
+    plaque_num: int
+    tissue_list: list[pyd.FileDataset]
+    path_list: list[pyd.FileDataset]
+    is_saved: bool
+
+    def __init__(self, isp_list: list[str], pid: str, folder_name: str, output_dir: str = './mask', verbose: int = 0):
+        """
+        An ISPContainer object is used to package an isp annotation folder, each folder has multiple "Findings"
+        :param isp_list: Only contains a sequence of isp annotation dicom file's path
+        :param pid: Patient ID
+        :param folder_name: This parameter is used to easily identify the original path
+        :param output_dir: An ISPContainer object goal is to save the tissue mask, and plaque mask into nifit file,
+        the mask will be saved in :param output_dir
+        :param verbose: if is 1, then print all process detail, if is 0, don't print anything.
+        """
+        self.output_dir: str = output_dir
+        self.total_list: list[str] = isp_list
+        self.folder_name: str = folder_name
+        self.pid: str = pid
+        self.verbose: int = verbose
+
+        self.tissue_list = []
+        self.path_list = []
+        self.plaque_num = 0
+        self.final_path = dict()
+        self.is_saved = False
+        uni_uid = set()
+
+        # Process all isp dicom file under specify folder.
+        for isp, isp_path in zip(map(pyd.dcmread, isp_list), isp_list):
+            uni_uid.add(find_isp_uid(isp))
+
+            if (_shape := get_tag(isp, (0x07a1, 0x1007), default_value=None, need_state=False)) is not None:
+                self.shape = _shape
+
+            if isp.ImageType[-1] != 'PATH':
+                self.tissue_list.append(isp)
+                continue
+
+            self.path_list.append(isp)
+            tamar_list: pyd.DataElement | None = isp.get((0x07a1, 0x1050))
+            if tamar_list is not None:
+                if not isinstance(tamar_list.value, list):
+                    self.plaque_num += len(list(filter(lambda x: ISPH.legal_plaque(x), tamar_list.value)))
+        desc = get_desc(isp)
+        self.comment = desc
+
+        cp = 0
+        snum = 0
+        if verbose == 1:
+            print(f'{"Comment":13}: {self.comment}')
+
+        if len(desc_pack := re.split('[, _]', desc)) > 0:
+            if verbose == 1:
+                print(desc_pack)
+            pure_digit = list(filter(lambda x: x.isdigit(), desc_pack))
+            cp_candidate = list(filter(lambda x: '%' in x, desc_pack))
+            # print(f'Pure digit: {pure_digit}, cp candidate: {cp_candidate}')
+            # Mean the format is cp%<sep>snum
+            if len(cp_candidate) != 0:
+                cp = float(_cp) if (_cp := cp_candidate[0][:-1]).isdigit() else 0
+                # Need second check snum is exist or not
+                snum = int(pure_digit[0]) if len(pure_digit) > 0 else snum
+            # Mean the format is cp<sep>snum
+            if len(pure_digit) > 1:
+                cp = float(pure_digit[0])
+                snum = int(pure_digit[1])
+
+        self.snum = snum
+        self.cp = cp
+
+        # This for debug usage.
+        if len(uni_uid) > 1:
+            print(uni_uid)
+        self.uid = uni_uid.pop()
+
+    def _collect_tissue(self):
+        union_mask: np.ndarray | None = None
+        for tisp in self.tissue_list:
+            organ_mask, organ_name = ISPH.reconstruct_mask(tisp)
+            organ_name = organ_name.replace(' ', '')
+            organ_mask = np.rot90(organ_mask, k=3)
+            if organ_name not in LABEL_NAME2DIGIT.keys():
+                continue
+
+            if union_mask is None:
+                union_mask = np.zeros_like(organ_mask)
+            union_mask[organ_mask != 0] = LABEL_NAME2DIGIT[organ_name]
+        return union_mask
+
+    def _collect_plaque(self, union_mask: np.ndarray, host_ct: nib.Nifti1Image) -> tuple[np.ndarray, np.ndarray | None]:
+        union_plaque: np.ndarray | None = None
+        if self.plaque_num < 1:
+            return union_mask, union_plaque
+        union_plaque = np.zeros_like(host_ct.get_fdata(), dtype=np.int16)
+
+        for pisp in self.path_list:
+            pack_list = ISPH.reconstruct_plaque(pisp, host_ct)
+            for pack in pack_list:
+                pmask, pname = pack
+                union_mask[pmask != 0] = LABEL_NAME2DIGIT['Plaque']
+                union_plaque[pmask != 0] = 1
+        return union_mask, union_plaque
+
+    def store_mask(self, ct: 'CTContainer'):
+        if self.is_saved:
+            return
+        host_ct = ct.nifit_ct
+        store_path = f'{self.output_dir}/{self.pid}/{self.uid}/{ct.cp}/{self.folder_name}'
+        os.makedirs(store_path, exist_ok=True)
+        union_mask: np.ndarray = self._collect_tissue()
+        union_mask, union_plaque = self._collect_plaque(union_mask, host_ct)
+
+        mask_nii = nib.Nifti1Image(union_mask, host_ct.affine)
+        nib.save(mask_nii, f'{store_path}/union_mask.nii.gz')
+        self.final_path['mask'] = f'{store_path}/union_mask.nii.gz'
+
+        if union_plaque is not None:
+            plaque_nii = nib.Nifti1Image(union_plaque, host_ct.affine)
+            nib.save(plaque_nii, f'{store_path}/union_plaque.nii.gz')
+            self.final_path['plaque'] = f'{store_path}/union_plaque.nii.gz'
+        self.is_saved = True
+    def __repr__(self):
+        ctxt = f'{"="*30}\n'
+        ctxt = f'{ctxt}Patient ID   :{self.pid}\n'
+        ctxt = f'{ctxt}Series NUM   :{self.snum}\n'
+        ctxt = f'{ctxt}UID          :{self.uid}\n'
+        ctxt = f'{ctxt}Cardiac Phase:{self.cp:4}\n'
+        ctxt = f'{ctxt}Comment      :{self.comment}\n'
+        ctxt = f'{ctxt}Has Plaque   :{self.plaque_num}\n'
+
+        if len(self.final_path) > 0:
+            for key, value in self.final_path.items():
+                ctxt = f'{ctxt}{key:13}:{value}\n'
+
+        return ctxt
+
+
+def commandline(ct_output_path: str, buf_path: str, verbose: int = 1):
+    if verbose == 1:
+        kwargs = dict()
+        print(f'{" DCM2NIIX INFO ":=^40}')
+    else:
+        kwargs = dict(stdout=sp.DEVNULL, stderr=sp.STDOUT, creationflags=sp.CREATE_NO_WINDOW)
+
+
+    sp.call(
+        ['./lib/dcm2niix.exe',
+         '-w', '1',  # if target is already, 1:overwrite it. 0:skip it
+         '-z', 'y',  # Do .gz compress,
+         '-o', ct_output_path,
+         buf_path
+         ], **kwargs
+    )
+    if verbose == 1:
+        print(f'{" DCM2NIIX INFO End ":=^40}')
+
+
+class DeDuplicateCT:
+    uid: str
+    pid: str
+    snum: int
+    cp: CardiacPhase
+
+    def __init__(self, init_ct: 'CTContainer'):
+        self.candidate: list['CTContainer'] = []
+        self.candidate.append(init_ct)
+        self.uid = init_ct.uid
+        self.pid = init_ct.pid
+        self.snum = init_ct.snum
+        self.cp = init_ct.cp
+
+        self.append = self.candidate.append
+        self.index = self.candidate.index
+
+    def __getitem__(self, item):
+        return self.candidate[item]
+
+    def __eq__(self, ct: 'CTContainer'):
+        return ct in self.candidate
+
+    def _largest_ct(self):
+        larger_idx = -1
+        volume = 0
+        for idx, ct in enumerate(self.candidate):
+            if (cand_v := np.prod(ct.shape)) > volume:
+                larger_idx = idx
+                volume = cand_v
+
+        for idx, ct in enumerate(self.candidate):
+            if idx != larger_idx:
+                self.candidate[idx].clean_buf()
+
+
+        return self.candidate[larger_idx]
+
+
+    def __call__(self, isp: 'ISPContainer'):
+        final_ct: 'CTContainer' = None
+
+        if isp is None:
+            return self._largest_ct()
+
+        if len(self.candidate) == 1:
+            return self.candidate[0]
+
+
+        for idx, ct in enumerate(self.candidate):
+            if ct.shape == isp.shape:
+                final_ct = ct
+                self.candidate.remove(ct)
+                break
+            else:
+                ct.clean_buf()
+
+        if final_ct is None:
+            return self._largest_ct()
+
+        return final_ct
+
+
+class CTContainer:
+    def __init__(
+            self,
+            dicom_list: list[tuple[pyd.FileDataset, str]],
+            pid: str,
+            uid: str,
+            snum: int,
+            cp: int | float,
+            fix_tag0008_0030: bool,
+            verbose: int = 1, buf_dir='./buf', output_dir='./out'
+    ) -> None:
+        """
+            A CTContainer object is used to manage all dicom file with same series uid and same series number(if possible),
+            and same cardiac phase(if possible)
+        :param dicom_list:
+        :param uid:  Series Instance UID
+        :param snum: Series Instance Number
+        :param cp: Cardiac Phase
+        :param fix_tag0008_0030:
+        :param verbose:
+        :param buf_dir:
+        :param output_dir:
+        """
+        self.verbose: int = verbose
+        self.pid: str = pid
+        self.has_pair: bool = False
+        self.fix_tag: bool = fix_tag0008_0030
+        self.snum: int = snum
+        self.uid: str = uid
+        self.cp: CardiacPhase = (cp)
+        self.buf_dir: str = buf_dir
+        cand_cnt = 0
+        self.buf_path: str = f'{buf_dir}/{pid}/{snum}/{uid}/{cp}/cand_0'
+        self.ct_output_path: str = f'{output_dir}/{pid}/{snum}/{uid}/{cp}/cand_0'
+
+        # Store all candidate
+        while os.path.exists(self.buf_path):
+            self.buf_path = self.buf_path.replace(f"cand_{cand_cnt}", f"cand_{cand_cnt + 1}")
+            cand_cnt += 1
+        self.ct_output_path: str = self.ct_output_path.replace(f"cand_{cand_cnt - 1}", f"cand_{cand_cnt}")
+
+        os.makedirs(self.buf_path, exist_ok=True)
+        os.makedirs(self.ct_output_path, exist_ok=True)
+
+        if fix_tag0008_0030:
+            copy_func = fix_copy
+        else:
+            copy_func = shutil_copy
+        # Copy all needed dicom into <buf_dir>/<uid>/cp/cand_<cand_cnt>
+        for pack in dicom_list:
+            dicom_name = re.split('[/\\\]', pack[1])[-1]
+            copy_func(pack, f'{self.buf_path}/{dicom_name}')
+        self.shape = (*pack[0].pixel_array.shape[:2], len(dicom_list))
+        if verbose == 1:
+            print(f'{"=" * 30}')
+            print(f'Patient ID   :{self.pid}')
+            print(f'Series Num   :{self.snum}')
+            print(f'UID          :{self.uid}')
+            print(f'Cardiac Phase:{self.cp:4}')
+            print(f'Erasing Tag  :{self.fix_tag}')
+
+    def clean_buf(self):
+        shutil.rmtree(self.buf_path)
+        del self.buf_path
+
+    def __eq__(self, other) -> bool:
+        if isinstance(other, ISPContainer):
+            if self.verbose:
+                print("=" * 30)
+                print(f'Compare    | CT:{self.final_path} vs ISP: {other.folder_name}')
+                print(f'Compare UID({self.uid == other.uid})| CT:{self.uid} vs ISP: {other.uid}')
+                print(f'Compare NUM({self.snum == other.snum})| CT:{self.snum} vs ISP: {other.snum}')
+                print(f'Compare CP({self.cp == other.cp}) | CT:{self.cp} vs ISP: {other.cp}')
+            cp2 = (float(self.cp) * float(other.cp)) ** .5
+            same_cp = (cp2 == self.cp) and (cp2 == other.cp)
+            snum2 = (int(self.snum) * int(other.snum)) ** .5
+            same_snum = (self.snum == snum2) and (other.snum == snum2)
+            same_uid = self.uid == other.uid
+            is_equal = False
+
+
+            # Strict equally
+            if snum2 != 0:
+                is_equal = same_snum
+            is_equal = is_equal or same_uid
+
+            if cp2 != 0:
+                is_equal = is_equal and same_cp
+            return is_equal
+        if isinstance(other, CTContainer):
+            return self.ct_output_path == other.ct_output_path
+
+    def store(self):
+        """
+            Using CommandLine to convert the dicom series into a .nii.gz format file.
+        :return:
+        """
+        # Using dcm2niix to convert dicom file into nii.gz file.
+        commandline(self.ct_output_path, self.buf_path, self.verbose)
+        self.final_path = list(filter(lambda x: not x.endswith('.json'), os.listdir(self.ct_output_path)))[0]
+        self.nifit_ct = nib.load(f'{self.ct_output_path}/{self.final_path}')
+        self.final_path = f'{self.ct_output_path}/{self.final_path}'
+        # self.pid = pid
+        if self.verbose == 1:
+            print(f'Final path   :{self.final_path}')
+            print(f'CT Shape     :{self.nifit_ct.get_fdata().shape}')
+        self.clean_buf()  # After all process, clean the buffer space.
+
+    def __repr__(self):
+        ctxt = ''
+        ctxt = f'{ctxt}Patient ID   :{self.pid}\n'
+        ctxt = f'{ctxt}Series Num   :{self.snum}\n'
+        ctxt = f'{ctxt}UID          :{self.uid}\n'
+        ctxt = f'{ctxt}Cardiac Phase:{self.cp:4}\n'
+        ctxt = f'{ctxt}Final Path   :{self.final_path}\n'
+        return ctxt
+
+
+def process_isp(isp_root: str, pid: str, output_dir: str = './mask') -> list[ISPContainer]:
+    isp_list = []
+    for root, dirs, files in os.walk(f'{isp_root}/{pid}', topdown=True):
+        # The ISP file name format only end with .dcm
+        legal_isp = list(filter(lambda x: x.endswith('.dcm'), [f'{root}/{name}' for name in files]))
+        if len(legal_isp) < 1 or len(dirs) > 0:
+            continue
+        folder_name = re.split('[/\\\]', root)[-1]
+        isp_list.append(ISPContainer(legal_isp, pid, folder_name, output_dir))
+    return isp_list
+
+
+def process_ct(ct_root: str, pid: str, output_dir: str = './out', buf_dir: str = './buf') -> tuple[
+    list[DeDuplicateCT], list[Any]]:
+    pid_ct_list: [DeDuplicateCT] = []
+    error_ct_list: [str] = []
+    for root, dirs, files in os.walk(f'{ct_root}/{pid}', topdown=True):
+        legal_dcm = list(filter(lambda x: legal_dcm_path(x), [f'{root}/{name}' for name in files]))
+        if len(legal_dcm) < 10 or len(dirs) > 0:
+            continue
+        cp2uid_map: dict[CardiacPhase, list[str]] = dict()
+        cp2dcm_map: dict[CardiacPhase, list[tuple[pyd.FileDataset, str]]] = dict()
+        cp2time_map: dict[CardiacPhase, list[str]] = dict()
+        cp2snum_map: dict[CardiacPhase, int] = dict()
+
+        # Do single folder at there.
+        # Loading all of dcm file under current folder.
+        for dcm, dcm_path in zip(list(map(partial(pyd.dcmread, force=True), legal_dcm)), legal_dcm):
+            if len(dcm) == 0:
+                error_ct_list.append(dcm_path)
+                continue
+            # status, cp = get_tag(dcm, (0x0020, 0x9241), 0)
+            cp = _get_cp(dcm)
+            status, uid = get_tag(dcm, (0x0020, 0x000e))
+            status, stime = get_tag(dcm, (0x0008, 0x0030))
+            status, snum = get_tag(dcm, (0x0020, 0x0011), None)
+            if cp2uid_map.get(cp) is None: # Initial The first cases.
+                cp2uid_map[cp] = list()
+                cp2dcm_map[cp] = list()
+                cp2time_map[cp] = list()
+            cp2uid_map[cp].append(uid)
+            cp2dcm_map[cp].append((dcm, dcm_path))
+            cp2time_map[cp].append(stime)
+            cp2snum_map[cp] = snum
+        # Done.
+
+        # Declare the CTContainer object into DeDuplicateCT
+        for cardiac_phase in cp2dcm_map:
+            corresponding_dcm: list[tuple[pyd.FileDataset, str]] = cp2dcm_map[cardiac_phase]
+            uid: str = set(cp2uid_map[cardiac_phase]).pop()
+            fix_stime: bool = len(set(cp2time_map[cardiac_phase])) > 1
+
+            buffer_ct = CTContainer(
+                corresponding_dcm, pid, uid, cp=cardiac_phase, snum=cp2snum_map[cardiac_phase],
+                fix_tag0008_0030=fix_stime, output_dir=output_dir, buf_dir=buf_dir, verbose=0
+            )
+            if buffer_ct in pid_ct_list: # This value is True mean, it may duplicate ct-series happen
+                pid_ct_list[pid_ct_list.index(buffer_ct)].append(buffer_ct)
+            else: # Here is the first-time
+                pid_ct_list.append(DeDuplicateCT(buffer_ct))
+
+    print(f'CT-stage Done.')
+    return pid_ct_list, error_ct_list
+
+
+def single_main(pid: str, ct_path_args=None, isp_path_args=None) -> list:
+    if ct_path_args is None:
+        ct_path_args = dict(output_dir=r'H:\502CT\out', buf_dir=r'H:\502CT\buf')
+    if isp_path_args is None:
+        isp_path_args = dict(output_dir=r'H:\502CT\mask')
+
+    ct_root = r'F:\CCTA'
+    isp_root = r'F:\CCTA Result'
+    # Start Loading all CT dicom file and ISP dicom file into program.
+    ct_pack = process_ct(ct_root, pid, **ct_path_args)
+    ct_list: list[DeDuplicateCT | CTContainer] = ct_pack[0]
+    ct_error_list: list[str] = ct_pack[1]
+    isp_list: list[ISPContainer] = process_isp(isp_root, pid, **isp_path_args)
+    # Loading Done.
+
+    print(f'Size of CT list : {len(ct_list)}')
+    print(f'Size of ISP list: {len(isp_list)}')
+    pair_list = list()
+    raw_pair_list = list()
+    offal_isp = []
+
+    # Using to match all of isp to correctly CT series
+    while len(isp_list) > 0:
+        isp = isp_list.pop(0)
+
+        if isp not in ct_list:  # The isp cannot match any CT
+            # TODO: How do I reuse the un-match ISP?
+            offal_isp.append(isp)
+            continue
+
+        # The isp maybe can match to multiple CT
+        for idx, duplicate_ct in enumerate(ct_list):
+            if duplicate_ct != isp:
+                continue
+
+            if isinstance(duplicate_ct, DeDuplicateCT):
+                final_ct = duplicate_ct(isp)
+                final_ct.store()
+                ct_list[idx] = final_ct
+                final_ct.has_pair = True
+                duplicate_ct = final_ct
+
+            isp.store_mask(duplicate_ct)
+            raw_pair_list.append((duplicate_ct, isp))
+            pair = {
+                'image': duplicate_ct.final_path,
+                'cp': duplicate_ct.cp,
+                'pid': pid,
+                'uid': duplicate_ct.uid
+            }
+            pair.update(isp.final_path)
+            pair_list.append(pair)
+    else:
+        for idx, dup_ct in enumerate(ct_list):
+            if isinstance(dup_ct, DeDuplicateCT):
+                ct = dup_ct(None)
+                ct.store()
+                ct_list[idx] = ct
+
+    offal_ct = list(filter(lambda _ct: not _ct.has_pair, ct_list))
+    print(f'unpair ISP: {len(offal_isp)}')
+    print(f'unpair CT : {len(offal_ct)}')
+    print(f'Successful Pairs: {len(pair_list)}')
+    # breakpoint()
+    if len(offal_isp) > 0 or len(offal_ct) > 0:
+        unpair_path = rf'H:\502CT\meta/unpair/{pid}'
+        os.makedirs(unpair_path, exist_ok=True)
+        unpair_obj = dict(isp=[], ct=[])
+        for oisp in offal_isp:
+            unpair_obj['isp'].append(oisp.folder_name)
+        for o_ct in offal_ct:
+            unpair_obj['ct'].append(o_ct.final_path)
+        with open(f'{unpair_path}/unpair.json', 'w+') as jout:
+            json.dump(unpair_obj, jout)
+        # pass
+    return pair_list, ct_error_list
+
+
+def full_pid(partition: Partition) -> list:
+    process_id = partition.PID
+    pid_list = partition.patient_list
+    n_pid = len(pid_list)
+    pidx_len_for_show = np.log10(n_pid) // 1 + 1
+    results = []
+
+    for pidx, pid in enumerate(pid_list):
+        t0 = dt.datetime.now()
+        print(f'Process-{process_id:02}| Start {pid} {pidx}/{n_pid}, time:{t0:%Y-%m-%d %H:%M:%S}')
+        try:
+            pid_result, ct_error_list = single_main(pid)
+            results.extend(pid_result)
+            with open(rf'H:\502CT\meta\{pid}.json', 'w+') as jout:
+                json.dump(pid_result, jout)
+            with open(rf'H:\502CT\meta\file_error\{pid}.txt', 'w+') as fout:
+                for err_file in ct_error_list:
+                    fout.write(f'{err_file}\n')
+            suffix = 'End'
+
+            # with open()
+        except Exception as e:
+
+            # traceback.
+            with open(rf'H:\502CT\meta\on_error\{pid}.txt', 'w+') as fout:
+                fout.write(f'{e.args}\n')
+                fout.write(traceback.format_exc())
+            suffix = 'On Error'
+
+        tn = dt.datetime.now()
+        print(f'Process-{process_id:02}| {suffix}   {pid} {pidx}/{n_pid}, time:{tn:%Y-%m-%d %H:%M:%S}, cost:{tn - t0}')
+    return results
+
+
+def test_main():
+    sample_pair = dict(name=DIGIT2LABEL_NAME, data=[])
+    legal_file_patint = list(filter(lambda x: os.path.isdir(rf'F:\CCTA\{x}'), os.listdir(r'F:\CCTA')))
+    world = ['0001', '2098', '0003', '0060', *np.random.choice(list(set(legal_file_patint) - {'2098', '0003', '0060'}), size=7, replace=False)]
+    print(world)
+    for pid in world:
+        supervised_list = single_main(pid)
+        sample_pair['data'].extend(supervised_list)
+        print(json.dumps(sample_pair, indent=4))
+    # import json
+    # with open('./static/sample_pair.json', 'w+') as jout:
+    #     json.dump(sample_pair, jout)
+
+
+def start_main():
+    done = [name.split('.')[0] for name in os.listdir(r'H:\502CT\meta') if name.endswith('.json')]
+
+    nproc = 3
+    sample_pair = dict(name=DIGIT2LABEL_NAME, data=[])
+    legal_file_patint = list(filter(lambda x: os.path.isdir(rf'F:\CCTA\{x}') and x not in done, os.listdir(r'F:\CCTA')))
+    sub_world = np.array_split(legal_file_patint, nproc)
+    sub_world = [Partition(PID=i + 1, patient_list=sworld) for i, sworld in enumerate(sub_world)]
+
+    with mp.Pool(processes=nproc) as pool:
+        sample_pair['data'].extend(pool.map(full_pid, (sub_world)))
+
+    with open(r'H:\502CT\meta\sample.json', 'w+') as jout:
+        json.dump(sample_pair, jout)
+
+
+if __name__ == '__main__':
+    start_main()
