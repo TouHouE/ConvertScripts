@@ -119,7 +119,7 @@ class CTFile:
     dcm_size: int
     nii_size: int
 
-    def __init__(self, df: pd.DataFrame, buf_dir='./buf', out_dir='./out', error_dir='./on_error'):
+    def __init__(self, df: pd.DataFrame, buf_dir, out_dir, error_dir, dcm2niix):
         self.df = df
         self.dcm_size = df['size'].sum()
         self.size = df.size
@@ -133,6 +133,7 @@ class CTFile:
         suffix = _make_path(df)
         self.buf_root = buf_dir
         self.out_root = out_dir
+        self.dcm2niix = dcm2niix
         self.buf_dir = f'{buf_dir}/{suffix}'
         self.out_dir = f'{out_dir}/{suffix}'
         self.info_dir = f'{out_dir}/{self.pid}'
@@ -166,7 +167,7 @@ class CTFile:
                 fout.write(traceback.format_exc())
 
     def store_nifit(self) -> None:
-        commandline(self.out_dir, self.buf_dir)
+        commandline(self.out_dir, self.buf_dir, dcm2niix_path=self.dcm2niix)
         target = list(filter(lambda x: not x.endswith('.json'), os.listdir(self.out_dir)))[0]
         self.abs_path = f'{self.out_dir}/{target}'
         self.nii_size = os.stat(self.abs_path).st_size
@@ -188,7 +189,7 @@ class CTFile:
         txt = f'{txt}\nStorage Path : {self.abs_path}'
 
         return txt
-def split2ct(df: pd.DataFrame, buf_dir='./buf', out_dir='./out') -> list[CTFile]:
+def split2ct(df: pd.DataFrame, buf_dir, out_dir, dcm2niix) -> list[CTFile]:
     all_split = []
 
     for snum_value, snum_entity in df.groupby('snum'):
