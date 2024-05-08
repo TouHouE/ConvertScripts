@@ -62,4 +62,7 @@
 ## 2. Generate the prompt file
 - Using `prompt_generate.py` to generate the VQA prompt 
 - This script should be launch after `dcm2niix_HsinChu.py` processed.
-- The `--report_file`
+- The `--report_file` is placed at /mnt/usbB/HsinChu/text/*.xlsx
+  - I do some rename, if you see "batch1" in file name, this table should match the batch1 nii folder
+  - But, if is batch2, you should combine all of 3 table as 1 table then running the `prompt_generate.py`
+- The `prompt_scripts_utils.py` should place at same path.
