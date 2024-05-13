@@ -37,9 +37,10 @@ def _get_cp(dcm: pyd.FileDataset) -> int | float:
             continue
         if (cand_cp := cp.value).isdigit():
             return float(cand_cp)
+        elif '%' in cand_cp:
+            return float(cand_cp.replace('%', ''))
         else:
-            return float(cand_cp[:-1])
-
+            print(cand_cp)
     return .0
 
 
