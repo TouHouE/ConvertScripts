@@ -23,20 +23,6 @@ def find_legal_dcm(dcm_name):
     return not_dup
 
 
-def _get_cp(dcm: pyd.FileDataset) -> int | float:
-    # cp = None
-    for tag_candidate in [(0x0020, 0x9241), (0x01f1, 0x1041), (0x7005, 0x1004), (0x7005, 0x1005)]:
-        cp = dcm.get(tag_candidate)
-        if cp is None:
-            continue
-        if (cand_cp := cp.value).is_digit():
-            return float(cand_cp)
-        else:
-            return float(cand_cp[:-1])
-
-    return .0
-
-
 def collect_patient_dcm(single_patient_path: str, out_dir='./out/hsinchu', buf_dir='./buf/hsinchu'):
     prepare_df = dict()
     total_dcm = []

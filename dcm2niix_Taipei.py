@@ -1,3 +1,4 @@
+import zipfile
 import argparse
 import traceback
 import multiprocessing as mp
@@ -122,8 +123,11 @@ class ISPContainer:
     tissue_list: list[pyd.FileDataset]
     path_list: list[pyd.FileDataset]
     is_saved: bool
-
-    def __init__(self, isp_list: list[str], pid: str, folder_name: str, output_dir: str = './mask', verbose: int = 0):
+    def __init__(
+            self, isp_list: list[str], pid: str,
+            folder_name: str, output_dir: str = './mask',
+            args: argparse.Namespace=None, verbose: int = 0
+    ) -> None:
         """
         An ISPContainer object is used to package an isp annotation folder, each folder has multiple "Findings"
         :param isp_list: Only contains a sequence of isp annotation dicom file's path
@@ -138,6 +142,7 @@ class ISPContainer:
         self.folder_name: str = folder_name
         self.pid: str = pid
         self.verbose: int = verbose
+        self.args = args
 
         self.tissue_list = []
         self.path_list = []
@@ -194,7 +199,7 @@ class ISPContainer:
             print(uni_uid)
         self.uid = uni_uid.pop()
 
-    def _collect_tissue(self):
+    def _collect_tissue(self) -> np.ndarray:
         union_mask: np.ndarray | None = None
         for tisp in self.tissue_list:
             organ_mask, organ_name = ISPH.reconstruct_mask(tisp)
@@ -229,7 +234,15 @@ class ISPContainer:
         store_path = f'{self.output_dir}/{self.pid}/{self.uid}/{ct.cp}/{self.folder_name}'
         os.makedirs(store_path, exist_ok=True)
         union_mask: np.ndarray = self._collect_tissue()
-        union_mask, union_plaque = self._collect_plaque(union_mask, host_ct)
+
+        try:
+            union_mask, union_plaque = self._collect_plaque(union_mask, host_ct)
+        except Exception as e:
+            with open(f'{self.args.error_dir}/plaque_error.txt', 'a+') as fout:
+                # fout.write(f'{"=" * 30}\n')
+                fout.write(f"{str(self)}Got error during collect_plaque\n")
+                fout.write(traceback.format_exc())
+            union_plaque = None
 
         mask_nii = nib.Nifti1Image(union_mask, host_ct.affine)
         nib.save(mask_nii, f'{store_path}/union_mask.nii.gz')
@@ -254,7 +267,11 @@ class ISPContainer:
                 ctxt = f'{ctxt}{key:13}:{value}\n'
 
         return ctxt
-
+    def get_store_path(self):
+        _final_path = self.final_path.copy()
+        for key, value in _final_path.items():
+            _final_path[key] = value.replace(self.args.dst_root, '')
+        return _final_path
 
 def commandline(ct_output_path: str, buf_path: str, verbose: int = 0, dcm2niix_path: str = './lib/dcm2niix.exe'):
     if verbose == 1:
@@ -311,9 +328,7 @@ class DeDuplicateCT:
             if idx != larger_idx:
                 self.candidate[idx].clean_buf()
 
-
         return self.candidate[larger_idx]
-
 
     def __call__(self, isp: 'ISPContainer'):
         final_ct: 'CTContainer' = None
@@ -323,7 +338,6 @@ class DeDuplicateCT:
 
         if len(self.candidate) == 1:
             return self.candidate[0]
-
 
         for idx, ct in enumerate(self.candidate):
             if ct.shape == isp.shape:
@@ -369,7 +383,7 @@ class CTContainer:
         self.fix_tag: bool = fix_tag0008_0030
         self.snum: int = snum
         self.uid: str = uid
-        self.cp: CardiacPhase = (cp)
+        self.cp: CardiacPhase = cp
         self.buf_dir: str = buf_dir
         cand_cnt = 0
         self.buf_path: str = f'{buf_dir}/{pid}/{snum}/{uid}/{cp}/cand_0'
@@ -458,8 +472,11 @@ class CTContainer:
         ctxt = f'{ctxt}Final Path   :{self.final_path}\n'
         return ctxt
 
-
-def process_isp(isp_root: str, pid: str, output_dir: str = './mask') -> list[ISPContainer]:
+    def get_store_path(self):
+        _final_path = self.ct_output_path
+        _final_path = _final_path.replace(self.args.dst_root, '')
+        return _final_path
+def process_isp(isp_root: str, pid: str, args: argparse.Namespace, output_dir: str = './mask') -> list[ISPContainer]:
     isp_list = []
     for root, dirs, files in os.walk(f'{isp_root}/{pid}', topdown=True):
         # The ISP file name format only end with .dcm
@@ -467,7 +484,7 @@ def process_isp(isp_root: str, pid: str, output_dir: str = './mask') -> list[ISP
         if len(legal_isp) < 1 or len(dirs) > 0:
             continue
         folder_name = re.split('[/\\\]', root)[-1]
-        isp_list.append(ISPContainer(legal_isp, pid, folder_name, output_dir))
+        isp_list.append(ISPContainer(legal_isp, pid, folder_name, output_dir, args=args))
     return isp_list
 
 
@@ -538,7 +555,7 @@ def single_main(pid: str, args: argparse.Namespace, ct_path_args=None, isp_path_
     ct_pack = process_ct(ct_root, pid, **ct_path_args)
     ct_list: list[DeDuplicateCT | CTContainer] = ct_pack[0]
     ct_error_list: list[str] = ct_pack[1]
-    isp_list: list[ISPContainer] = process_isp(isp_root, pid, **isp_path_args)
+    isp_list: list[ISPContainer] = process_isp(isp_root, pid, args=args, **isp_path_args)
     # Loading Done.
 
     print(f'Size of CT list : {len(ct_list)}')
@@ -571,19 +588,25 @@ def single_main(pid: str, args: argparse.Namespace, ct_path_args=None, isp_path_
             isp.store_mask(duplicate_ct)
             raw_pair_list.append((duplicate_ct, isp))
             pair = {
-                'image': duplicate_ct.final_path,
+                # 'image': duplicate_ct.final_path,
+                'image': duplicate_ct.get_store_path(),
                 'cp': duplicate_ct.cp,
                 'pid': pid,
                 'uid': duplicate_ct.uid
             }
-            pair.update(isp.final_path)
+            # pair.update(isp.final_path)
+            pair.update(isp.get_store_path())
             pair_list.append(pair)
     else:
+        # All of here is unpair CT, even that, there are good self-training data.
         for idx, dup_ct in enumerate(ct_list):
             if isinstance(dup_ct, DeDuplicateCT):
                 ct = dup_ct(None)
                 ct.store()
                 ct_list[idx] = ct
+            # End of isinstance judge
+        # End of iterative unpair CT
+    # End of processing unpair CT
 
     offal_ct = list(filter(lambda _ct: not _ct.has_pair, ct_list))
     # print(f'unpair ISP: {len(offal_isp)}')
@@ -597,10 +620,13 @@ def single_main(pid: str, args: argparse.Namespace, ct_path_args=None, isp_path_
         for oisp in offal_isp:
             unpair_obj['isp'].append(oisp.folder_name)
         for o_ct in offal_ct:
-            unpair_obj['ct'].append(o_ct.final_path)
+            # Here is old method.
+            # unpair_obj['ct'].append(o_ct.final_path)
+            unpair_obj['ct'].append(o_ct.get_store_path())
         with open(f'{unpair_path}/unpair.json', 'w+') as jout:
             json.dump(unpair_obj, jout)
         # pass
+    # End of store unpair ct and isp.
     return pair_list, ct_error_list
 
 
@@ -613,7 +639,7 @@ def full_pid(partition: Partition) -> list:
 
     for pidx, pid in enumerate(pid_list):
         t0 = dt.datetime.now()
-        print(f'Process-{proc_id:02}|[Start]|[{pidx}/{n_pid}]|{pid} , time:{t0:%Y-%m-%d %H:%M:%S}')
+        print(f'Process-{proc_id:02}|[Start]|[{pidx}/{n_pid}]|{pid}, time:{t0:%Y-%m-%d %H:%M:%S}')
         try:
             pid_result, ct_error_list = single_main(pid, args)
             results.extend(pid_result)
@@ -652,21 +678,89 @@ def test_main():
 
 
 def processed_data_list(args: argparse.Namespace) -> list:
+    if (ip := args.ignore_path) is not None:
+        with open(ip, 'r') as jin:
+            pdata = json.load(jin)
+        pdata = [ctxt.split('.')[0] for ctxt in pdata]
+        return pdata
+
+
     meta_dir = args.meta_dir
     pdata = [name.split('.')[0] for name in os.listdir(meta_dir) if name.endswith('.json')]
     return pdata
 
 
+def unzip(args, folder, member) -> str | None:
+    """
+        Return None if got error, otherwise, the return will be the patient id
+    :param args:
+    :param folder:
+    :param member:
+    Returns:
+
+    """
+    patient_name = member.split('.')[0]
+    try:
+        with zipfile.ZipFile(f'{args.data_root}/{folder}/{member}', 'r') as unzipper:
+            top = unzipper.filelist[0]
+            if top.filename == patient_name:
+                # This statement for if the patient folder already in *.zip
+                # Thus, I don't prepare a folder to store all CT-series
+                dst = f'{args.data_root}/{folder}'
+            else:
+                # This statement for if the patient folder not in the *.zip.
+                dst = f'{args.data_root}/{folder}/{patient_name}'
+
+            unzipper.extractall(dst)
+    except Exception as e:
+        with open(f'{args.err_dir}/Unzip_error.txt', 'a+') as fout:
+            fout.write(f'{"=" * 30}\n{args.data_root}/{folder}/{member}\n')
+            fout.write(traceback.format_exc())
+            fout.write('\n')
+        return None
+
+    return patient_name
+
+
+def get_legal_pair(ignore_list: list[str], args: argparse.Namespace) -> list[str]:
+    if not args.large_ct:
+        return list(
+            filter(lambda x: os.path.isdir(rf'{args.data_root}\{x}') and x not in ignore_list,
+                   os.listdir(args.data_root)))
+    legal_path: list[str] = list()
+    candidates_folder: list[str] = os.listdir(args.data_root)
+
+    for folder in candidates_folder:
+        all_member: list[str] = os.listdir(f'{args.data_root}/{folder}')
+        folder_member: list[str] = list(filter(lambda x: re.fullmatch('[0-9]{4}', x) is not None, all_member))
+        zip_member: list[str] = list(set(all_member) - set(folder_member))
+        is_legal_folder: bool = len(folder_member) == 0 and len(zip_member) == 0
+        if is_legal_folder or 'CT標註result' in folder:
+            continue  # not a legal folder
+
+        if len(zip_member) > 0:
+            for member in zip_member:
+                if (patient_name := unzip(args, folder, member)) is not None:
+                    # Adding the `patient_name` into `folder_member`
+                    folder_member.append(patient_name)
+                # End of unzip
+            # End of iterative unzip all of zip_member
+        # End of *.zip file process.
+        legal_path.extend(folder_member)
+    # End of all possible.
+    return legal_path
+
+
 def start_main(args: argparse.Namespace):
     # done = [name.split('.')[0] for name in os.listdir(r'H:\502CT\meta') if name.endswith('.json')]
-    done = processed_data_list(args)
+    ignore_list: list[str] = processed_data_list(args)
     if (w_ratio := args.worker_ratio) is None:
-        nproc = args.num_workers
+        nproc: int = args.num_workers
     else:
-        nproc = mp.cpu_count() // w_ratio
-
+        nproc: int = mp.cpu_count() // w_ratio
+    args.nproc = nproc
     sample_pair = dict(name=DIGIT2LABEL_NAME, data=[])
-    legal_file_patint = list(filter(lambda x: os.path.isdir(rf'{args.data_root}\{x}') and x not in done, os.listdir(args.data_root)))
+    legal_file_patint = list(filter(lambda x: os.path.isdir(rf'{args.data_root}\{x}') and x not in ignore_list, os.listdir(args.data_root)))
     sub_world = np.array_split(legal_file_patint, nproc)
     sub_world = [Partition(PID=i, patient_list=sworld, args=args) for i, sworld in enumerate(sub_world)]
 
@@ -685,21 +779,22 @@ def mask_sure_folder_exist(args):
     os.makedirs(f'{args.err_dir}')
 
 
-
 if __name__ == '__main__':
     # from argparse import ArgumentParser
     parser = argparse.ArgumentParser()
     parser.add_argument('--data_root', type=str)
     parser.add_argument('--isp_root', type=str)
+    parser.add_argument('--large_ct', action='store_true', type=bool, default=False)
     parser.add_argument('--num_workers', type=int, default=1)
     parser.add_argument('--worker_ratio', type=float, default=None)
-    # parser.add_argument('--dst_root', type=str, default='./NiiHsinChu')
+    parser.add_argument('--ignore_path', type=str, default=None)
     parser.add_argument('--out_dir', default='./NiiTaipei/out')
     parser.add_argument('--buf_dir', default='./NiiTaipei/buf')
     parser.add_argument('--mask_dir', defult='./NiiTaipei/mask')
     parser.add_argument('--meta_dir', default='./NiiTaipei/meta')
     parser.add_argument('--err_dir', default='./NiiTaipei/err')
+    parser.add_argument('--dst_root', default='./NiiTaipei')
     parser.add_argument('--dcm2niix', default='./lib/dcm2niix.exe')
     args = parser.parse_args()
     mask_sure_folder_exist(args)
-    start_main()
+    start_main(args)
