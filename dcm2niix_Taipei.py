@@ -68,9 +68,10 @@ def _get_cp(dcm: pyd.FileDataset) -> int | float:
     for tag_candidate in [(0x0020, 0x9241), (0x01f1, 0x1041), (0x7005, 0x1004), (0x7005, 0x1005)]:
         cp = dcm.get(tag_candidate)
         if cp is not None:
-            cp = cp.value
-            if isinstance(cp, float) or isinstance(cp, int):
-                return cp
+            cp = _confirm_str(cp.value)
+            if all(_part.isdigit() for _part in cp.split('.')):
+                return float(cp)
+
             if '%' in cp:
                 return float(_confirm_str(cp).replace('%', ''))
 
@@ -291,8 +292,6 @@ def commandline(ct_output_path: str, buf_path: str, verbose: int = 0, dcm2niix_p
         print(f'{" DCM2NIIX INFO ":=^40}')
     else:
         kwargs = dict(stdout=sp.DEVNULL, stderr=sp.STDOUT)
-        if 'win' in sys.platform:
-            kwargs['creationflags'] = sp.CREATE_NO_WINDOW
 
 
 
@@ -491,6 +490,8 @@ class CTContainer:
         _final_path = self.ct_output_path
         _final_path = _final_path.replace(self.args.dst_root, '')
         return _final_path
+
+
 def process_isp(isp_root: str, pid: str, args: argparse.Namespace, output_dir: str = './mask') -> list[ISPContainer]:
     isp_list = []
     for root, dirs, files in os.walk(f'{isp_root}/{pid}', topdown=True):
