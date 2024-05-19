@@ -15,6 +15,7 @@ import nibabel as nib
 import isp_helper as ISPH
 import dataclasses
 import shutil
+from operator import methodcaller
 
 DIGIT2LABEL_NAME = {
     1: 'RightAtrium',
@@ -31,6 +32,7 @@ DIGIT2LABEL_NAME = {
 LABEL_NAME2DIGIT = {value: key for key, value in DIGIT2LABEL_NAME.items()}
 CardiacPhase = NewType('CardiacPhase', Union[float, int])
 FilePathPack = NewType('FilePathPack', tuple[pyd.FileDataset, str])
+IS_ZIP: methodcaller = methodcaller('endswith', '.zip')
 
 @dataclasses.dataclass
 class Partition:
@@ -723,19 +725,26 @@ def unzip(args, folder, member) -> str | None:
 
 
 def get_legal_pair(ignore_list: list[str], args: argparse.Namespace) -> list[str]:
-    if not args.large_ct:
+    if not args.large_ct: # Process 502-CT ignore list
         return list(
-            filter(lambda x: os.path.isdir(rf'{args.data_root}\{x}') and x not in ignore_list,
+            filter(lambda x: os.path.isdir(rf'{args.data_root}/{x}') and x not in ignore_list,
                    os.listdir(args.data_root)))
+    # Process for Large CT(around 2500 patient)
     legal_path: list[str] = list()
     candidates_folder: list[str] = os.listdir(args.data_root)
 
+    # There are a lot of useless folder and annotation folder under `args.data_root`
     for folder in candidates_folder:
         all_member: list[str] = os.listdir(f'{args.data_root}/{folder}')
+        # Because there have a lot of unzip patient under some folder, this line choosing already unzip patient
         folder_member: list[str] = list(filter(lambda x: re.fullmatch('[0-9]{4}', x) is not None, all_member))
-        zip_member: list[str] = list(set(all_member) - set(folder_member))
+        # This line choosing zipped patient
+        zip_member: list[str] = list(filter(IS_ZIP, all_member))
+        # An legal folder must store patient not other things.
+        # If `folder_member` and `zip_member` doesn't contain any member, just ignore current folder
         is_legal_folder: bool = len(folder_member) == 0 and len(zip_member) == 0
-        if is_legal_folder or 'CT標註result' in folder:
+        is_annotation_folder = 'CT標註result' in folder
+        if is_legal_folder or is_annotation_folder:
             continue  # not a legal folder
 
         if len(zip_member) > 0:
@@ -759,24 +768,27 @@ def start_main(args: argparse.Namespace):
     else:
         nproc: int = mp.cpu_count() // w_ratio
     args.nproc = nproc
+    print(f'# of workers: {nproc}')
     sample_pair = dict(name=DIGIT2LABEL_NAME, data=[])
-    legal_file_patint = list(filter(lambda x: os.path.isdir(rf'{args.data_root}\{x}') and x not in ignore_list, os.listdir(args.data_root)))
-    sub_world = np.array_split(legal_file_patint, nproc)
+    # legal_file_patient = list(filter(lambda x: os.path.isdir(rf'{args.data_root}\{x}') and x not in ignore_list, os.listdir(args.data_root)))
+    legal_file_patient = get_legal_pair(ignore_list, args)
+    print(f'The number of patients waiting to be processed')
+    sub_world = np.array_split(legal_file_patient, nproc)
     sub_world = [Partition(PID=i, patient_list=sworld, args=args) for i, sworld in enumerate(sub_world)]
 
     with mp.Pool(processes=nproc) as pool:
         sample_pair['data'].extend(pool.map(full_pid, (sub_world)))
 
-    with open(rf'{args.meta_dir}\sample.json', 'w+') as jout:
+    with open(rf'{args.meta_dir}/sample.json', 'w+') as jout:
         json.dump(sample_pair, jout)
 
 
-def mask_sure_folder_exist(args):
-    os.makedirs(f'{args.meta_dir}')
-    os.makedirs(f'{args.out_dir}')
-    os.makedirs(f'{args.buf_dir}')
-    os.makedirs(f'{args.mask_dir}')
-    os.makedirs(f'{args.err_dir}')
+def mask_sure_folder_exist(args: argparse.Namespace):
+    os.makedirs(f'{args.meta_dir}', exist_ok=True)
+    os.makedirs(f'{args.out_dir}', exist_ok=True)
+    os.makedirs(f'{args.buf_dir}', exist_ok=True)
+    os.makedirs(f'{args.mask_dir}', exist_ok=True)
+    os.makedirs(f'{args.err_dir}', exist_ok=True)
 
 
 if __name__ == '__main__':
@@ -784,13 +796,13 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--data_root', type=str)
     parser.add_argument('--isp_root', type=str)
-    parser.add_argument('--large_ct', action='store_true', type=bool, default=False)
+    parser.add_argument('--large_ct', action='store_true', default=False)
     parser.add_argument('--num_workers', type=int, default=1)
     parser.add_argument('--worker_ratio', type=float, default=None)
     parser.add_argument('--ignore_path', type=str, default=None)
     parser.add_argument('--out_dir', default='./NiiTaipei/out')
     parser.add_argument('--buf_dir', default='./NiiTaipei/buf')
-    parser.add_argument('--mask_dir', defult='./NiiTaipei/mask')
+    parser.add_argument('--mask_dir', default='./NiiTaipei/mask')
     parser.add_argument('--meta_dir', default='./NiiTaipei/meta')
     parser.add_argument('--err_dir', default='./NiiTaipei/err')
     parser.add_argument('--dst_root', default='./NiiTaipei')
