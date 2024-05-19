@@ -1,3 +1,4 @@
+import sys
 import zipfile
 import argparse
 import traceback
@@ -275,12 +276,16 @@ class ISPContainer:
             _final_path[key] = value.replace(self.args.dst_root, '')
         return _final_path
 
+
 def commandline(ct_output_path: str, buf_path: str, verbose: int = 0, dcm2niix_path: str = './lib/dcm2niix.exe'):
     if verbose == 1:
         kwargs = dict()
         print(f'{" DCM2NIIX INFO ":=^40}')
     else:
-        kwargs = dict(stdout=sp.DEVNULL, stderr=sp.STDOUT, creationflags=sp.CREATE_NO_WINDOW)
+        kwargs = dict(stdout=sp.DEVNULL, stderr=sp.STDOUT)
+        if 'win' in sys.platform:
+            kwargs['creationflags'] = sp.CREATE_NO_WINDOW
+
 
 
     sp.call(
