@@ -54,6 +54,15 @@ def get_desc(dcm: pyd.FileDataset) -> str:
     return ''
 
 
+def _confirm_str(var) -> str:
+    if isinstance(var, bytes) or isinstance(var, bytearray):
+        return var.decode('ISO_IR 100', 'strict')
+    if isinstance(var, int):
+        return str(var)
+
+    return var
+
+
 def _get_cp(dcm: pyd.FileDataset) -> int | float:
     # cp = None
     for tag_candidate in [(0x0020, 0x9241), (0x01f1, 0x1041), (0x7005, 0x1004), (0x7005, 0x1005)]:
@@ -63,8 +72,7 @@ def _get_cp(dcm: pyd.FileDataset) -> int | float:
             if isinstance(cp, float) or isinstance(cp, int):
                 return cp
             if '%' in cp:
-                return float(cp.replace('%', ''))
-
+                return float(_confirm_str(cp).replace('%', ''))
 
     return .0
 
@@ -784,7 +792,7 @@ def start_main(args: argparse.Namespace):
     sub_world = [Partition(PID=i, patient_list=sworld, args=args) for i, sworld in enumerate(sub_world)]
 
     with mp.Pool(processes=nproc) as pool:
-        sample_pair['data'].extend(pool.map(full_pid, (sub_world)))
+        sample_pair['data'].extend(pool.map(full_pid, sub_world))
 
     with open(rf'{args.meta_dir}/sample.json', 'w+') as jout:
         json.dump(sample_pair, jout)
