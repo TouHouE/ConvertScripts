@@ -531,7 +531,7 @@ def process_ct(ct_root: str, pid: str, output_dir: str = './out', buf_dir: str =
             fix_stime: bool = len(set(cp2time_map[cardiac_phase])) > 1
 
             buffer_ct = CTContainer(
-                corresponding_dcm, pid, uid, cp=cardiac_phase, snum=cp2snum_map[cardiac_phase],
+                corresponding_dcm, pid, uid, args=args, cp=cardiac_phase, snum=cp2snum_map[cardiac_phase],
                 fix_tag0008_0030=fix_stime, output_dir=output_dir, buf_dir=buf_dir, verbose=0
             )
             if buffer_ct in pid_ct_list: # This value is True mean, it may duplicate ct-series happen
@@ -749,6 +749,8 @@ def get_legal_pair(ignore_list: list[str], args: argparse.Namespace) -> list[str
 
         if len(zip_member) > 0:
             for member in zip_member:
+                # The method `unzip` would unzip the zip_member and return the corresponding
+                # patient name, if got unzip error, it would return `None`
                 if (patient_name := unzip(args, folder, member)) is not None:
                     # Adding the `patient_name` into `folder_member`
                     folder_member.append(patient_name)
