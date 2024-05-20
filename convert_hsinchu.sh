@@ -1,13 +1,11 @@
 #! /bin/bash
 
 #SBATCH --nodes=1
-#SBATCH --job-name=convert_hsinchu
+#SBATCH --job-name=convert_hsinchu_232
 #SBATCH --ntasks-per-node=1
 #SBATCH --gpus-per-node=1
-#SBATCH --output=%x-%j.out
-#SBATCH --error=%x-%j.err
+#SBATCH --output=%x/%j.out
 #SBATCH --cpus-per-task=32
-#SBATCH --exclusive
 
 export MASTER_ADDR=$(scontrol show hostnames $SLURM_JOB_NODELIST | head -n 1)
 export MASTER_PORT=$(( RANDOM % (50000 - 30000 + 1 ) + 30000 ))
