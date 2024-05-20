@@ -385,13 +385,14 @@ class NiiCTContainer:
             return same_patient and self.date == other.date
         return False
 
+
 def info_txt2CT(pid: str, info_txt: pd.DataFrame):
     return NiiCTContainer(pid, info_txt)
 
 
-def build_ccta(df_entity: pd.DataFrame) -> CCTA:
+def build_ccta(df_entity: pd.DataFrame, template_path: str) -> CCTA:
     try:
-        ccta = CCTA(df_entity)
+        ccta = CCTA(df_entity, template_path=template_path)
     except Exception as e:
         ccta = None
 

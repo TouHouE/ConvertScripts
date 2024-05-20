@@ -63,7 +63,7 @@ def main(args: argparse.Namespace):
 
     for row in range(len(report_list)):
         report = report_list.iloc[row]
-        ccta: PSU.CCTA | None = PSU.build_ccta(report)
+        ccta: PSU.CCTA | None = PSU.build_ccta(report, args.prompt_template_path)
         if ccta is None:  # Because of report format got error
             continue
         if ccta not in nii_list:  # The corresponding CT file was not found.
