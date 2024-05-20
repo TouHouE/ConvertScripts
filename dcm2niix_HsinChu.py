@@ -103,7 +103,7 @@ def start_point(n_proc: int, out_dir, buf_dir, err_dir, args):
 
 def task1(args):
     if (w_ratio := args.worker_ratio) is None:
-        nproc = args.num_workders
+        nproc = args.num_workers
     else:
         nproc = mp.cpu_count() // w_ratio
     print(f'# of workers: {nproc}')
