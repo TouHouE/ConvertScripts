@@ -119,7 +119,7 @@ def task1(args):
     for _dir in [out_dir, buf_dir, err_dir]:
         os.makedirs(_dir, exist_ok=True)
 
-    start_point(nproc, out_dir, buf_dir, err_dir, args)
+    start_point(nproc, out_dir, buf_dir, err_dir, args=args)
 
 
 if __name__ == '__main__':
@@ -133,6 +133,6 @@ if __name__ == '__main__':
     parser.add_argument('--buf_dir', default='./NiiHsinChu/buf')
     parser.add_argument('--err_dir', default='./NiiHsinChu/err')
     parser.add_argument('--dcm2niix', default='./lib/dcm2niix.exe')
-    args = parser.parse_args()
+    gargs = parser.parse_args()
 
-    task1(args)
+    task1(gargs)
