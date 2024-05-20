@@ -24,7 +24,10 @@ def find_legal_dcm(dcm_name):
     return not_dup
 
 
-def collect_patient_dcm(single_patient_path: str, args, out_dir='./out/hsinchu', buf_dir='./buf/hsinchu'):
+def collect_patient_dcm(
+        single_patient_path: str, args,
+        out_dir: str, buf_dir: str, err_dir: str
+):
     prepare_df = dict()
     total_dcm = []
     single_patient_path = str(single_patient_path)
@@ -51,7 +54,11 @@ def collect_patient_dcm(single_patient_path: str, args, out_dir='./out/hsinchu',
     # Because the database operation are more useful, so we build the pd.DataFrame
     df = pd.DataFrame.from_dict(prepare_df)
     # This method can group all different series, uid, cardiac phase, as single nifit file.
-    return split2ct(df, out_dir=out_dir, buf_dir=buf_dir, dcm2niix=args.dcm2niix)
+    return split2ct(
+        df,
+        out_dir=out_dir, buf_dir=buf_dir, err_dir=err_dir,
+        dcm2niix=args.dcm2niix
+    )
 
 
 def middle(partition):
@@ -69,7 +76,7 @@ def middle(partition):
         print(f'Process-{current_pid:02}|[Start]|[{idx}/{total}]|{patient_root}, {get_now(t0)}')
 
         try:
-            all_group_ct: list[CTFile] = collect_patient_dcm(patient_root, args, out_dir, buf_dir)
+            all_group_ct: list[CTFile] = collect_patient_dcm(patient_root, args, out_dir, buf_dir, err_dir=err_dir)
             # Write down some information about current ct, like file_path, compress ratio.
             with open(f'{all_group_ct[0].info_dir}/info.txt', 'a+') as fout:
                 for ct in all_group_ct:

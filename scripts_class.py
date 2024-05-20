@@ -210,13 +210,13 @@ class CTFile:
         return txt
 
 
-def split2ct(df: pd.DataFrame, buf_dir, out_dir, dcm2niix) -> list[CTFile]:
+def split2ct(df: pd.DataFrame, buf_dir, out_dir, err_dir, dcm2niix) -> list[CTFile]:
     all_split = []
 
     for snum_value, snum_entity in df.groupby('snum'):
         for uid_value, uid_entity in snum_entity.groupby('uid'):
             for cp_value, cp_entity in uid_entity.groupby('cp'):
-                all_split.append(CTFile(cp_entity, buf_dir, out_dir))
+                all_split.append(CTFile(cp_entity, buf_dir, out_dir, error_dir=err_dir, dcm2niix=dcm2niix))
 
     return all_split
 
