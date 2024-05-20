@@ -17,7 +17,7 @@ from operator import methodcaller
 class Partition:
     proc_id: int
     data: list | np.ndarray | Iterable
-    args: argparse.namespace
+    args: argparse.Namespace
     out_dir: str
     buf_dir: str
     err_dir: str
