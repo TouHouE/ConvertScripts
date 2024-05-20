@@ -26,7 +26,7 @@ def find_legal_dcm(dcm_name):
 def collect_patient_dcm(single_patient_path: str, out_dir='./out/hsinchu', buf_dir='./buf/hsinchu'):
     prepare_df = dict()
     total_dcm = []
-    print(f'Type of single_patient_path is: {type(single_patient_path)}')
+    single_patient_path = str(single_patient_path)
     for roots, dirs, files in os.walk(single_patient_path, topdown=True):
         files = list(filter(lambda x: find_legal_dcm(x), files))
         if len(files) == 0:
