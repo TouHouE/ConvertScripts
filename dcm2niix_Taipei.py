@@ -767,7 +767,7 @@ def get_legal_pair(ignore_list: list[str], args: argparse.Namespace) -> list[str
             continue  # not a legal folder
         print(f'# of zipped patient: {len(zip_member)} in {folder}')
         print(f'# of unzip patient: {len(folder_member)} in {folder}')
-        folder_name = [f'{folder}/{pname}' for pname in folder_member]
+        folder_member = [f'{folder}/{pname}' for pname in folder_member]
         if len(zip_member) > 0:
             for member in zip_member:
                 # The method `unzip` would unzip the zip_member and return the corresponding
