@@ -18,7 +18,7 @@ export CONTAINER_MOUNT="${SRC_MNT},${DST_MNT},${PROJ_MNT}"
 export PYTHON_CMD="
 python /workspace/project/ConvertScripts/dcm2niix_HsinChu.py \
 --data_root=/workspace/src-232 --out_dir=/workspace/data/image/HsinChu \
---buf_dir=/workspace/buf --err_dir=/workspace/data/meta/err/HsinChu \
+--buf_dir=/workspace/buf --err_dir=/workspace/data/err/HsinChu/b2-232 \
 --dcm2niix=/workspace/project/ConvertScripts/lib/dcm2niix --num_workers=16
 "
 
