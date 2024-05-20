@@ -3,7 +3,6 @@
 #SBATCH --nodes=1
 #SBATCH --job-name=convert_hsinchu_232
 #SBATCH --ntasks-per-node=1
-#SBATCH --gpus-per-node=1
 #SBATCH --output=%x/%j.out
 #SBATCH --cpus-per-task=32
 
