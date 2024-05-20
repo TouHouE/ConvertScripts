@@ -767,14 +767,14 @@ def get_legal_pair(ignore_list: list[str], args: argparse.Namespace) -> list[str
             continue  # not a legal folder
         print(f'# of zipped patient: {len(zip_member)} in {folder}')
         print(f'# of unzip patient: {len(folder_member)} in {folder}')
-
+        folder_name = [f'{folder}/{pname}' for pname in folder_member]
         if len(zip_member) > 0:
             for member in zip_member:
                 # The method `unzip` would unzip the zip_member and return the corresponding
                 # patient name, if got unzip error, it would return `None`
                 if (patient_name := unzip(args, folder, member)) is not None:
                     # Adding the `patient_name` into `folder_member`
-                    folder_member.append(patient_name)
+                    folder_member.append(f'{folder}/{patient_name}')
                     print(f'Unzip: {patient_name}')
                 # End of unzip
             # End of iterative unzip all of zip_member
