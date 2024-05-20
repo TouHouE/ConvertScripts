@@ -69,7 +69,7 @@ def middle(partition):
         print(f'Process-{current_pid:02}|[Start]|[{idx}/{total}]|{patient_root}, {get_now(t0)}')
 
         try:
-            all_group_ct: list[CTFile] = collect_patient_dcm(patient_root, out_dir, buf_dir, args=args)
+            all_group_ct: list[CTFile] = collect_patient_dcm(patient_root, args, out_dir, buf_dir)
             # Write down some information about current ct, like file_path, compress ratio.
             with open(f'{all_group_ct[0].info_dir}/info.txt', 'a+') as fout:
                 for ct in all_group_ct:
