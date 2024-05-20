@@ -504,8 +504,10 @@ def process_isp(isp_root: str, pid: str, args: argparse.Namespace, output_dir: s
     return isp_list
 
 
-def process_ct(ct_root: str, pid: str, output_dir: str = './out', buf_dir: str = './buf') -> tuple[
-    list[DeDuplicateCT], list[Any]]:
+def process_ct(
+        ct_root: str, pid: str,
+        output_dir: str = './out', buf_dir: str = './buf'
+) -> tuple[list[DeDuplicateCT], list[Any]]:
     pid_ct_list: [DeDuplicateCT] = []
     error_ct_list: [str] = []
     for root, dirs, files in os.walk(f'{ct_root}/{pid}', topdown=True):
@@ -524,7 +526,7 @@ def process_ct(ct_root: str, pid: str, output_dir: str = './out', buf_dir: str =
                 error_ct_list.append(dcm_path)
                 continue
             # status, cp = get_tag(dcm, (0x0020, 0x9241), 0)
-            cp = _get_cp(dcm)
+            cp: float | int = _get_cp(dcm)
             status, uid = get_tag(dcm, (0x0020, 0x000e))
             status, stime = get_tag(dcm, (0x0008, 0x0030))
             status, snum = get_tag(dcm, (0x0020, 0x0011), None)
@@ -700,8 +702,6 @@ def processed_data_list(args: argparse.Namespace) -> list:
             pdata = json.load(jin)
         pdata = [ctxt.split('.')[0] for ctxt in pdata]
         return pdata
-
-
     meta_dir = args.meta_dir
     pdata = [name.split('.')[0] for name in os.listdir(meta_dir) if name.endswith('.json')]
     return pdata
@@ -757,6 +757,8 @@ def get_legal_pair(ignore_list: list[str], args: argparse.Namespace) -> list[str
         folder_member: list[str] = list(filter(lambda x: re.fullmatch('[0-9]{4}', x) is not None, all_member))
         # This line choosing zipped patient
         zip_member: list[str] = list(filter(IS_ZIP, all_member))
+        # Second times detect
+        zip_member: list[str] = list(filter(lambda x: x.split('.')[0] not in folder_member, zip_member))
         # An legal folder must store patient not other things.
         # If `folder_member` and `zip_member` doesn't contain any member, just ignore current folder
         is_legal_folder: bool = len(folder_member) == 0 and len(zip_member) == 0
@@ -783,8 +785,6 @@ def get_legal_pair(ignore_list: list[str], args: argparse.Namespace) -> list[str
 
 
 def start_main(args: argparse.Namespace):
-    # done = [name.split('.')[0] for name in os.listdir(r'H:\502CT\meta') if name.endswith('.json')]
-    ignore_list: list[str] = processed_data_list(args)
     if (w_ratio := args.worker_ratio) is None:
         nproc: int = args.num_workers
     else:
@@ -792,7 +792,7 @@ def start_main(args: argparse.Namespace):
     args.nproc = nproc
     print(f'# of workers: {nproc}')
     sample_pair = dict(name=DIGIT2LABEL_NAME, data=[])
-    # legal_file_patient = list(filter(lambda x: os.path.isdir(rf'{args.data_root}\{x}') and x not in ignore_list, os.listdir(args.data_root)))
+    ignore_list: list[str] = processed_data_list(args)
     legal_file_patient = get_legal_pair(ignore_list, args)
     print(f'The number of patients waiting to be processed')
     sub_world = np.array_split(legal_file_patient, nproc)
