@@ -100,7 +100,7 @@ def start_point(n_proc: int, out_dir, buf_dir, err_dir, args):
         for _dir in [odir, bdir, edir]:
             os.makedirs(_dir, exist_ok=True)
 
-        partitions = [Partition(i, segment, odir, bdir, edir, args=args) for i, segment in enumerate(segment_patient)]
+        partitions = [Partition(i, segment, args, odir, bdir, edir) for i, segment in enumerate(segment_patient)]
 
         with mp.Pool(n_proc) as pooler:
             pooler.map(middle, partitions)
