@@ -741,10 +741,12 @@ def unzip(args, folder, member) -> str | None:
 
 def get_legal_pair(ignore_list: list[str], args: argparse.Namespace) -> list[str]:
     if not args.large_ct: # Process 502-CT ignore list
+        print(f'Is 502CT')
         return list(
             filter(lambda x: os.path.isdir(rf'{args.data_root}/{x}') and x not in ignore_list,
                    os.listdir(args.data_root)))
     # Process for Large CT(around 2500 patient)
+    print(f'Trying to processing Large CT')
     legal_path: list[str] = list()
     candidates_folder: list[str] = os.listdir(args.data_root)
 
