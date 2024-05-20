@@ -44,10 +44,15 @@ def _get_cp(dcm: pyd.FileDataset) -> int | float:
         if cp is None:
             continue
         cp = _confirm_str(cp.value)
+
+        if len(cp.replace(' ', '')) < 1:
+            return .0
+
         if all(_part.isdigit() for _part in cp.split('.')):
             return float(cp)
-        if '%' in cp:
-            return float(cp.replace('%', ''))
+
+        if not cp[-1].isdigit():
+            return float(cp[:-1])
 
     return .0
 
