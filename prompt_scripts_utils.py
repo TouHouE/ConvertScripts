@@ -179,7 +179,7 @@ class CCTA:
             if isinstance(pair['topic'], list): # For Artery Prompt.
                 artery = np.random.choice(pair['topic'], 1).tolist()[0]
                 artery_lower = artery.lower()
-                value = self.coronary_analysis[artery]
+                value = self.coronary_analysis.get(artery, 'Patent')
                 ask = ask.replace('[artery]', artery_lower)
 
                 if 'Patent' in value:
@@ -193,7 +193,7 @@ class CCTA:
                 ans = ans.replace('[scale]', info.get('scale', '').lower())
                 ans = ans.replace('[describe]', info.get('describe', ''))
             elif pair['topic'] == 'Uninterpretable segments':
-                value = self.coronary_analysis['Uninterpretable segments']
+                value = self.coronary_analysis.get('Uninterpretable segments', 'none')
                 if 'none' in value.lower():
                     ans = ans['none']
                 else:
