@@ -77,7 +77,7 @@ def middle(partition):
             with open(f'{err_dir}/{patient_folder_name}.txt', 'w+') as fout:
                 fout.write(traceback.format_exc())
         tn = dt.datetime.now()
-        print(f'Process-{current_pid}|[{status:^5}]|{idx}/{total}|Cost: {tn - t0}|{patient_root}, {get_now(tn)}')
+        print(f'Process-{current_pid}|[{status:^5}]|{idx}/{total}|{patient_root}, {get_now(tn)}, cost: {tn - t0}')
 
 
 def start_point(n_proc: int, out_dir, buf_dir, err_dir, args):
@@ -92,6 +92,9 @@ def start_point(n_proc: int, out_dir, buf_dir, err_dir, args):
         odir = f'{out_dir}/{suffix}'
         bdir = f'{buf_dir}/{suffix}'
         edir = f'{err_dir}/{suffix}'
+        for _dir in [odir, bdir, edir]:
+            os.makedirs(_dir, exist_ok=True)
+
         partitions = [Partition(i, segment, odir, bdir, edir) for i, segment in enumerate(segment_patient)]
 
         with mp.Pool(n_proc) as pooler:
@@ -103,12 +106,13 @@ def task1(args):
         nproc = args.num_workders
     else:
         nproc = mp.cpu_count() // w_ratio
-
+    print(f'# of workers: {nproc}')
     out_dir = args.out_dir
     buf_dir = args.buf_dir
     err_dir = args.err_dir
-    for dir in [out_dir, buf_dir, err_dir]:
-        os.makedirs(dir, exist_ok=True)
+
+    for _dir in [out_dir, buf_dir, err_dir]:
+        os.makedirs(_dir, exist_ok=True)
 
     start_point(nproc, out_dir, buf_dir, err_dir, args)
 
