@@ -57,7 +57,7 @@ def get_desc(dcm: pyd.FileDataset) -> str:
 def _confirm_str(var) -> str:
     if isinstance(var, bytes) or isinstance(var, bytearray):
         return var.decode('ISO_IR 100', 'strict')
-    if isinstance(var, int):
+    if isinstance(var, int) or isinstance(var, float):
         return str(var)
 
     return var
@@ -567,6 +567,7 @@ def single_main(pid: str, args: argparse.Namespace, ct_path_args=None, isp_path_
     # isp_root = r'F:\CCTA Result'
     ct_root = args.data_root
     isp_root = args.isp_root
+    # print(f'Root of CT: {ct_root}, Root of ISP: {isp_root}')
     # Start Loading all CT dicom file and ISP dicom file into program.
     ct_pack = process_ct(ct_root, pid, **ct_path_args)
     ct_list: list[DeDuplicateCT | CTContainer] = ct_pack[0]
