@@ -29,4 +29,4 @@ python /workspace/project/ConvertScripts/dcm2niix_HsinChu.py \
 --dcm2niix=/workspace/project/ConvertScripts/lib/dcm2niix --num_workers=16
 "
 
-srun --container-name=$CONTAINER_NAME --container-mounts=$CONTAINER_MOUNT --container-writable bash -c $PYTHON_CMD
+srun --container-image=$CONTAINER_NAME --container-mounts=$CONTAINER_MOUNT --container-writable bash -c $PYTHON_CMD
