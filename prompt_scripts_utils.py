@@ -338,7 +338,7 @@ class NiiCTContainer:
     path: str
     date: list[dt.datetime]
     pid: str
-    legal_path: dict
+    legal_path: dict[dt.datetime, list[str]]
 
     def __init__(self, pid: str, info_txt: pd.DataFrame):
         name_list: list[str] = info_txt[0].to_list()
@@ -364,7 +364,7 @@ class NiiCTContainer:
     def len(self, key: dt.datetime | str) -> int:
         if isinstance(key, str):
             key = dt.datetime.strptime(key, '%Y%m%d%H%M%S')
-        return self.legal_path.get(key)
+        return len(self.legal_path.get(key))
 
     def __getitem__(self, item):
         return self.legal_path.get(item)
