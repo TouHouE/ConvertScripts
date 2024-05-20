@@ -336,7 +336,7 @@ class CCTA:
 
 class NiiCTContainer:
     path: str
-    date: dt.datetime
+    date: list[dt.datetime]
     pid: str
     legal_path: dict
 
@@ -358,6 +358,7 @@ class NiiCTContainer:
                 date_mapper[date] = list()
             date_mapper[date].append(path)
         self.legal_path = date_mapper
+        self.date = list(set(date_mapper.keys()))
         self.pid = pid
 
     def len(self, key: dt.datetime | str) -> int:
@@ -375,7 +376,8 @@ class NiiCTContainer:
             # If anyone didn't have member 'date', we ignore compare this feature
             if self.date is None or other.check_date is None:
                 return same_patient
-            return same_patient and self.date == other.check_date
+
+            return same_patient and other.check_date in self.date
         elif isinstance(other, NiiCTContainer):
             same_patient = other.pid.lower() == self.pid.lower()
 
