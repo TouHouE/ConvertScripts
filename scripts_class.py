@@ -1,3 +1,4 @@
+import argparse
 import datetime as dt
 import os
 import pandas as pd
@@ -16,6 +17,7 @@ from operator import methodcaller
 class Partition:
     proc_id: int
     data: list | np.ndarray | Iterable
+    args: argparse.namespace
     out_dir: str
     buf_dir: str
     err_dir: str
