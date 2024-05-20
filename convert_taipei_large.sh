@@ -21,10 +21,10 @@ export CONTAINER_MOUNT="$SRC_MNT,$DST_MNT,$PROJ_MNT,$PROJ_MNT"
 export PYTHON_CMD="
 python /workspace/project/ConvertScripts/dcm2niix_Taipei.py --large_ct \
 --data_root=/workspace/src/ct --isp_root=/workspace/src/isp \
---out_dir=/workspace/data/image/Taipei/LargeCT --buf_dir=/workspace/buf \
---err_dir=/workspace/data/err/Taipei/LargeCT \
+--out_dir=/workspace/data/image/Taipei/LargeCT --mask_dir=/workspace/data/mask/Taipei/LargeCT
+--buf_dir=/workspace/buf --err_dir=/workspace/data/err/Taipei/LargeCT \
 --dcm2niix=/workspace/project/ConvertScripts/lib/dcm2niix --num_workers=16 \
---dst_root=/workspace/data --meta_dir=/workspace/data/meta/Taipei/502CT
+--dst_root=/workspace/data --meta_dir=/workspace/data/meta/Taipei/LargeCT
 "
 
 srun --container-image=$CONTAINER_NAME --container-mounts=$CONTAINER_MOUNT --container-writable $PYTHON_CMD
