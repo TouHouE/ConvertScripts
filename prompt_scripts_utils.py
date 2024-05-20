@@ -197,7 +197,7 @@ class CCTA:
                 if 'none' in value.lower():
                     ans = ans['none']
                 else:
-                    ans = ans.replace('[describe]', value)
+                    ans = ans['ow'].replace('[describe]', value)
             elif pair['topic'] == "Dominance":
                 value = self.coronary_analysis['Dominance']
                 ans = ans.replace('[describe]', value.lower())
