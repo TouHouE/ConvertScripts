@@ -749,7 +749,7 @@ def get_legal_pair(ignore_list: list[str], args: argparse.Namespace) -> list[str
     candidates_folder: list[str] = os.listdir(args.data_root)
 
     # There are a lot of useless folder and annotation folder under `args.data_root`
-    for folder in candidates_folder:
+    for idx, folder in enumerate(candidates_folder):
         all_member: list[str] = os.listdir(f'{args.data_root}/{folder}')
         # Because there have a lot of unzip patient under some folder, this line choosing already unzip patient
         folder_member: list[str] = list(filter(lambda x: re.fullmatch('[0-9]{4}', x) is not None, all_member))
@@ -761,6 +761,8 @@ def get_legal_pair(ignore_list: list[str], args: argparse.Namespace) -> list[str
         is_annotation_folder = 'CT標註result' in folder
         if is_legal_folder or is_annotation_folder:
             continue  # not a legal folder
+        print(f'# of zipped patient: {len(zip_member)} in {folder}')
+        print(f'# of unzip patient: {len(folder_member)} in {folder}')
 
         if len(zip_member) > 0:
             for member in zip_member:
@@ -769,6 +771,7 @@ def get_legal_pair(ignore_list: list[str], args: argparse.Namespace) -> list[str
                 if (patient_name := unzip(args, folder, member)) is not None:
                     # Adding the `patient_name` into `folder_member`
                     folder_member.append(patient_name)
+                    print(f'Unzip: {patient_name}')
                 # End of unzip
             # End of iterative unzip all of zip_member
         # End of *.zip file process.
