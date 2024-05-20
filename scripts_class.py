@@ -146,7 +146,7 @@ class CTFile:
         self.snum = self.df['snum'].unique().tolist()[0]
         self.cp = self.df['cp'].unique().tolist()[0]
         self.uid = self.df['uid'].unique().tolist()[0]
-        self.pid = self.df['pid'].unique().tolist()[0]
+        self.pid = self.df['pid'].unique().tolist()[0].lower()
 
         # <pid>/<snum>/<uid>/<cp>
         suffix = _make_path(df)
