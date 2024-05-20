@@ -29,18 +29,26 @@ class Partition:
             self.err_dir = './err'
 
 
+def _confirm_str(var) -> str:
+    if isinstance(var, bytes) or isinstance(var, bytearray):
+        return var.decode('ISO_IR 100', 'strict')
+    if isinstance(var, int) or isinstance(var, float):
+        return str(var)
+    return var
+
+
 def _get_cp(dcm: pyd.FileDataset) -> int | float:
     # cp = None
     for tag_candidate in [(0x0020, 0x9241), (0x01f1, 0x1041), (0x7005, 0x1004), (0x7005, 0x1005)]:
         cp = dcm.get(tag_candidate)
         if cp is None:
             continue
-        if (cand_cp := cp.value).isdigit():
-            return float(cand_cp)
-        elif '%' in cand_cp:
-            return float(cand_cp.replace('%', ''))
-        else:
-            print(cand_cp)
+        cp = _confirm_str(cp.value)
+        if all(_part.isdigit() for _part in cp.split('.')):
+            return float(cp)
+        if '%' in cp:
+            return float(cp.replace('%', ''))
+
     return .0
 
 
@@ -49,12 +57,15 @@ def get_tag(dcm: pyd.FileDataset, tag: Tuple[int, int], default_value: Any = Non
         return 'Normal', info.value if need_state else info.value
     return 'Unreadable', default_value if need_state else default_value
 
+
 def _make_path(df: pd.DataFrame):
     pid = df['pid'].unique()[0].lower()
     snum = int(df['snum'].unique()[0])
     uid = df['uid'].unique()[0]
     cp = float(df['cp'].unique()[0])
     return f'{pid}/{snum}/{uid}/{cp}'
+
+
 class DCMFile:
     path: str
     uid: str
@@ -146,6 +157,7 @@ class CTFile:
         os.makedirs(error_dir, exist_ok=True)
         self._copy2buf()
         self.store_nifit()
+
     def _copy2buf(self):
         for didx in range(len(self.df)):
             path = self.df['path'].iloc[didx]
@@ -188,8 +200,9 @@ class CTFile:
         txt = f'{txt}\nSeries UID   : {self.uid}'
         txt = f'{txt}\nCardiac Phase: {self.cp}'
         txt = f'{txt}\nStorage Path : {self.abs_path}'
-
         return txt
+
+
 def split2ct(df: pd.DataFrame, buf_dir, out_dir, dcm2niix) -> list[CTFile]:
     all_split = []
 
@@ -206,7 +219,7 @@ def commandline(ct_output_path: str, buf_path: str, verbose: int = 0, dcm2niix_p
         kwargs = dict()
         print(f'{" DCM2NIIX INFO ":=^40}')
     else:
-        kwargs = dict(stdout=sp.DEVNULL, stderr=sp.STDOUT, creationflags=sp.CREATE_NO_WINDOW)
+        kwargs = dict(stdout=sp.DEVNULL, stderr=sp.STDOUT)
 
 
     sp.call(
