@@ -61,6 +61,7 @@ def middle(partition):
     out_dir = partition.out_dir
     buf_dir = partition.buf_dir
     err_dir = partition.err_dir
+    args = partition.args
 
     for idx, patient_root in enumerate(data):
         patient_folder_name = re.split('[/\\\]', patient_root)[-1]
@@ -99,7 +100,7 @@ def start_point(n_proc: int, out_dir, buf_dir, err_dir, args):
         for _dir in [odir, bdir, edir]:
             os.makedirs(_dir, exist_ok=True)
 
-        partitions = [Partition(i, segment, odir, bdir, edir) for i, segment in enumerate(segment_patient)]
+        partitions = [Partition(i, segment, odir, bdir, edir, args=args) for i, segment in enumerate(segment_patient)]
 
         with mp.Pool(n_proc) as pooler:
             pooler.map(middle, partitions)
