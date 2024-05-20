@@ -26,6 +26,7 @@ def find_legal_dcm(dcm_name):
 def collect_patient_dcm(single_patient_path: str, out_dir='./out/hsinchu', buf_dir='./buf/hsinchu'):
     prepare_df = dict()
     total_dcm = []
+    print(f'Type of single_patient_path is: {type(single_patient_path)}')
     for roots, dirs, files in os.walk(single_patient_path, topdown=True):
         files = list(filter(lambda x: find_legal_dcm(x), files))
         if len(files) == 0:
@@ -63,9 +64,11 @@ def middle(partition):
     for idx, patient_root in enumerate(data):
         patient_folder_name = re.split('[/\\\]', patient_root)[-1]
         t0 = dt.datetime.now()
-        print(f'Process-{current_pid}|[Start]|{idx}/{total}|{patient_root}, {get_now(t0)}')
+        print(f'Process-{current_pid:02}|[Start]|[{idx}/{total}]|{patient_root}, {get_now(t0)}')
+
         try:
             all_group_ct: list[CTFile] = collect_patient_dcm(patient_root, out_dir, buf_dir)
+            # Write down some information about current ct, like file_path, compress ratio.
             with open(f'{all_group_ct[0].info_dir}/info.txt', 'a+') as fout:
                 for ct in all_group_ct:
                     fout.write(f'{ct.str_ratio()}\n')
@@ -77,7 +80,7 @@ def middle(partition):
             with open(f'{err_dir}/{patient_folder_name}.txt', 'w+') as fout:
                 fout.write(traceback.format_exc())
         tn = dt.datetime.now()
-        print(f'Process-{current_pid}|[{status:^5}]|{idx}/{total}|{patient_root}, {get_now(tn)}, cost: {tn - t0}')
+        print(f'Process-{current_pid}|[{status:^5}]|[{idx}/{total}]|{patient_root}, {get_now(tn)}, cost: {tn - t0}')
 
 
 def start_point(n_proc: int, out_dir, buf_dir, err_dir, args):
