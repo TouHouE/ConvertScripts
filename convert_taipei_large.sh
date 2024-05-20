@@ -5,11 +5,6 @@
 #SBATCH --output=%x/%j.out
 #SBATCH --cpus-per-task=32
 
-export MASTER_ADDR=$(scontrol show hostnames $SLURM_JOB_NODELIST | head -n 1)
-export MASTER_PORT=$(( RANDOM % (50000 - 30000 + 1 ) + 30000 ))
-export GPUS_PER_NODE=$SLURM_GPUS_PER_NODE
-export NNODES=$SLURM_NNODES
-export NUM_PROCESSES=$(expr $NNODES \* $GPUS_PER_NODE)
 export HSU="/mnt/home/hsu.william9"
 export LOUIE="/mnt/home/l159753807"
 export SHARE="/mnt/share/NTU_Heart_CT"
