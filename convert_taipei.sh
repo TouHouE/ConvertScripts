@@ -1,5 +1,6 @@
 #! /bin/bash
 
+#SBATCH --partition=NTU_Heart_CT
 #SBATCH --nodes=1
 #SBATCH --job-name=convert_taipei_502
 #SBATCH --ntasks-per-node=1

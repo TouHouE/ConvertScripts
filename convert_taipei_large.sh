@@ -1,5 +1,6 @@
 #! /bin/bash
 
+#SBATCH --partition=NTU_Heart_CT
 #SBATCH --job-name=convert_taipei_large
 #SBATCH --ntasks-per-node=1
 #SBATCH --output=%x/%j.out
