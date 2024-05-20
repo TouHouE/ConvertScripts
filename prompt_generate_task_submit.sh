@@ -17,12 +17,9 @@ export OUT_MNT="$SHARE/data:/workspace/data"
 export PROJ_MNT="$HSU/workspace/project:/workspace/project"
 
 export CONTAINER_MOUNT="${TXT_MNT},${CT_MNT},${OUT_MNT},${PROJ_MNT}"
-
+export script="/workspace/project/ConvertScripts/prompt_generate_scripts.sh"
 export PYTHON_CMD="
-python /workspace/project/ConvertScripts/prompt_generate.py \
---report_file=/workspace/text/ccta_report_batch_1.xlsx --ct_root=/workspace/ct/batch1 \
---prompt_template_path=/workspace/project/ConvertScripts/template.json \
---json_path=/workspace/data/conversations_b1.json
+
 "
 
-srun --container-image=$CONTAINER_NAME --container-mounts=$CONTAINER_MOUNT --container-writable $PYTHON_CMD
+srun --container-image=$CONTAINER_NAME --container-mounts=$CONTAINER_MOUNT --container-writable bash $script
