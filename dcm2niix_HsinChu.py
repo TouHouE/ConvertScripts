@@ -127,7 +127,7 @@ if __name__ == '__main__':
     parser.add_argument('--out_dir', default='./NiiHsinChu/out')
     parser.add_argument('--buf_dir', default='./NiiHsinChu/buf')
     parser.add_argument('--err_dir', default='./NiiHsinChu/err')
-    parser.add_argument('-dcm2niix', default='./lib/dcm2niix.exe')
+    parser.add_argument('--dcm2niix', default='./lib/dcm2niix.exe')
     args = parser.parse_args()
 
     task1(args)
