@@ -250,7 +250,7 @@ class ISPContainer:
         try:
             union_mask, union_plaque = self._collect_plaque(union_mask, host_ct)
         except Exception as e:
-            with open(f'{self.args.error_dir}/plaque_error.txt', 'a+') as fout:
+            with open(f'{self.args.err_dir}/plaque_error.txt', 'a+') as fout:
                 # fout.write(f'{"=" * 30}\n')
                 fout.write(f"{str(self)}Got error during collect_plaque\n")
                 fout.write(traceback.format_exc())
@@ -682,7 +682,7 @@ def full_pid(partition: Partition) -> list:
                 os.makedirs(err_dir, exist_ok=True)
             else:
                 meta_dir = args.meta_dir
-                err_dir = args.error_dir
+                err_dir = args.err_dir
 
             with open(rf'{meta_dir}/{pid}.json', 'w+') as jout:
                 json.dump(pid_result, jout)
