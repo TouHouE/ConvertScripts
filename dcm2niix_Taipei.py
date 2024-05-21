@@ -728,6 +728,8 @@ def test_main():
 
 def processed_data_list(args: argparse.Namespace) -> list:
     if (ip := args.ignore_path) is not None:
+        if ip == 'no':
+            return list()
         with open(ip, 'r') as jin:
             pdata = json.load(jin)
         pdata = [ctxt.split('.')[0] for ctxt in pdata]
