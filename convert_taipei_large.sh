@@ -22,7 +22,7 @@ export PYTHON_CMD="
 python /workspace/project/ConvertScripts/dcm2niix_Taipei.py \
 --data_root=/workspace/src/ct --isp_root=/workspace/src/isp \
 --out_dir=/workspace/data/image/Taipei/LargeCT --mask_dir=/workspace/data/mask/Taipei/LargeCT
---buf_dir=/workspace/buf --err_dir=/workspace/data/err/Taipei/LargeCT \
+--buf_dir=/workspace/buf --err_dir=/workspace/data/err/Taipei/LargeCT --ignore_path=no \
 --dcm2niix=/workspace/project/ConvertScripts/lib/dcm2niix --num_workers=16 \
 --dst_root=/workspace/data --meta_dir=/workspace/data/meta/Taipei/LargeCT
 "
