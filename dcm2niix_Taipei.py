@@ -494,6 +494,9 @@ class CTContainer:
 
 def process_isp(isp_root: str, pid: str, args: argparse.Namespace, output_dir: str = './mask') -> list[ISPContainer]:
     isp_list = []
+    if args.large_ct:
+        pid = pid.split('/')[-1]
+
     for root, dirs, files in os.walk(f'{isp_root}/{pid}', topdown=True):
         # The ISP file name format only end with .dcm
         legal_isp = list(filter(lambda x: x.endswith('.dcm'), [f'{root}/{name}' for name in files]))
@@ -672,7 +675,14 @@ def full_pid(partition: Partition) -> list:
             # with open()
         except Exception as e:
             # traceback.
-            with open(rf'{args.err_dir}/{pid}.txt', 'a+') as fout:
+            if args.large_ct:
+                folder, _pid = pid.split('/')
+                err_dir = f'{args.err_dir}/{folder}'
+            else:
+                err_dir = args.err_dir
+                _pid = pid
+
+            with open(rf'{err_dir}/{_pid}.txt', 'a+') as fout:
                 fout.write(f'{e.args}\n')
                 fout.write(traceback.format_exc())
             suffix = 'Error'
