@@ -671,9 +671,20 @@ def full_pid(partition: Partition) -> list:
         try:
             pid_result, ct_error_list = single_main(pid, args)
             results.extend(pid_result)
-            with open(rf'{args.meta_dir}/{pid}.json', 'w+') as jout:
+
+            if args.large_ct:
+                folder, pid = pid.split('/')
+                meta_dir = f'{args.meta_dir}/{folder}'
+                err_dir = f'{args.err_dir}/{folder}'
+                os.makedirs(meta_dir, exist_ok=True)
+                os.makedirs(err_dir, exist_ok=True)
+            else:
+                meta_dir = args.meta_dir
+                err_dir = args.error_dir
+
+            with open(rf'{meta_dir}/{pid}.json', 'w+') as jout:
                 json.dump(pid_result, jout)
-            with open(rf'{args.err_dir}/{pid}.txt', 'a+') as fout:
+            with open(rf'{err_dir}/{pid}.txt', 'a+') as fout:
                 for err_file in ct_error_list:
                     fout.write(f'[{t0:%Y-%m-%d %H:%M:%S}]|{err_file}\n')
             suffix = 'Done'
