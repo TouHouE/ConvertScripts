@@ -502,6 +502,7 @@ def process_isp(isp_root: str, pid: str, args: argparse.Namespace, output_dir: s
     for root, dirs, files in os.walk(f'{isp_root}/{pid}', topdown=True):
         # The ISP file name format only end with .dcm
         legal_isp = list(filter(lambda x: x.endswith('.dcm'), [f'{root}/{name}' for name in files]))
+        print(f'Before filtering: {len(files)} after filtering: {len(legal_isp)} at {root}')
         if len(legal_isp) < 1 or len(dirs) > 0:
             continue
         folder_name = re.split('[/\\\]', root)[-1]
@@ -791,7 +792,7 @@ def get_legal_pair(ignore_list: list[str], args: argparse.Namespace) -> list[str
         # An legal folder must store patient not other things.
         # If `folder_member` and `zip_member` doesn't contain any member, just ignore current folder
         is_legal_folder: bool = len(folder_member) == 0 and len(zip_member) == 0
-        is_annotation_folder = 'CT標註result' in folder
+        is_annotation_folder = 'ct_isp' in folder
         if is_legal_folder or is_annotation_folder:
             continue  # not a legal folder
         print(f'# of zipped patient: {len(zip_member)} in {folder}')
