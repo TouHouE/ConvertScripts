@@ -12,7 +12,7 @@ export SHARE="/mnt/share/NTU_Heart_CT"
 export CONTAINER_NAME="$HSU/workspace/dimage/nemo_monai.sqsh"
 
 export SRC_MNT="$SHARE/usbC:/workspace/src/ct"
-export ISP_MNT="$SHARE/usbC/CT標註result:/workspace/src/isp"
+export ISP_MNT="$SHARE/usbC/ct_isp:/workspace/src/isp"
 export DST_MNT="$SHARE/data:/workspace/data"
 export PROJ_MNT="$HSU/workspace/project:/workspace/project"
 
