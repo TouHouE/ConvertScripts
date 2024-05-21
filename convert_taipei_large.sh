@@ -11,7 +11,7 @@ export LOUIE="/mnt/home/l159753807"
 export SHARE="/mnt/share/NTU_Heart_CT"
 export CONTAINER_NAME="$HSU/workspace/dimage/nemo_monai.sqsh"
 
-export SRC_MNT="$SHARE/usbC:/workspace/src/ct"
+export SRC_MNT="$SHARE/usbC/all_ct:/workspace/src/ct"
 export ISP_MNT="$SHARE/large_isp:/workspace/src/isp"
 export DST_MNT="$SHARE/data:/workspace/data"
 export PROJ_MNT="$HSU/workspace/project:/workspace/project"
@@ -19,7 +19,7 @@ export PROJ_MNT="$HSU/workspace/project:/workspace/project"
 export CONTAINER_MOUNT="$SRC_MNT,$DST_MNT,$PROJ_MNT,$PROJ_MNT"
 
 export PYTHON_CMD="
-python /workspace/project/ConvertScripts/dcm2niix_Taipei.py --large_ct \
+python /workspace/project/ConvertScripts/dcm2niix_Taipei.py \
 --data_root=/workspace/src/ct --isp_root=/workspace/src/isp \
 --out_dir=/workspace/data/image/Taipei/LargeCT --mask_dir=/workspace/data/mask/Taipei/LargeCT
 --buf_dir=/workspace/buf --err_dir=/workspace/data/err/Taipei/LargeCT \
