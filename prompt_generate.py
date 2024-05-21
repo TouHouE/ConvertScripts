@@ -9,15 +9,34 @@ import prompt_scripts_utils as PSU
 
 def load_nii(path) -> list[PSU.NiiCTContainer]:
     all_patient = os.listdir(path)
-    all_nii = [PSU.info_txt2CT(pid, pd.read_csv(f'{path}/{pid}/info.txt', header=None)) for pid in all_patient]
+    all_nii = list()
+    for pid in all_patient:
+        try:
+            _df = pd.read_csv(f'{path}/{pid}/info.txt', header=None, encoding='iso-8859-1')
+        except Exception as e:
+            print(f'{pid} did not contain info.txt, trying another way.')
+            mapper = {0: [], 1: []}.copy()
+
+            for roots, dirs, files in os.walk(f'{path}/{pid}', topdown=True):
+                files = list(filter(lambda x: x.endswith('.nii.gz'), files))
+                if files.__len__() < 1:
+                    continue
+                
+                mapper[0].extend([f'{roots}/{fname}' for fname in files])
+                mapper[1].extend([roots] * len(files))
+            _df = pd.DataFrame(mapper, columns=list(mapper.keys()))
+            
+        _buf = PSU.info_txt2CT(pid, _df)
+        all_nii.append(_buf)
     return all_nii
 
 
 def load_report(path) -> pd.DataFrame:
     if path.endswith(".xlsx"):
-        return pd.read_excel(open(path, 'r', encoding='ISO-8859-1'))
+        # with open(path, 'r+', encoding='iso-8859-1') as stream:
+        return pd.read_excel(path)
     elif path.endswith('.csv'):
-        return pd.read_csv(path, encoding='ISO-8859-1')
+        return pd.read_csv(path)
     return None
 
 
@@ -73,12 +92,16 @@ def main(args: argparse.Namespace):
     for row in range(len(report_list)):
         report = report_list.iloc[row]
         ccta: PSU.CCTA | None = PSU.build_ccta(report, args.prompt_template_path)
+        
         if ccta is None:  # Because of report format got error
+            print(f'CCTA-{row}| got something wrong')
             continue
         if ccta not in nii_list:  # The corresponding CT file was not found.
+            print(f'CCTA-{row}| Not coressponding nii found')
             continue
         nii = nii_list[nii_list.index(ccta)]
         num_prompt = nii.len(ccta.check_date)
+        print(f'CCTA-{row}| Produce # of Prompt: {num_prompt}')
         prompt_list = ccta.get_prompt(num_prompt)
         pack = merge_path_and_prompt(nii, prompt_list, ccta.check_date, cnt)
         final_prompt_list.extend(pack[0])

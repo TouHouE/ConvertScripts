@@ -4,6 +4,7 @@ import datetime as dt
 import json
 import numpy as np
 import re
+import traceback
 
 EXPAND_SHORT_NAME = {
     'LM':"Left main coronary artery",
@@ -30,9 +31,9 @@ class CCTA:
     dictionary: dict
 
     def __init__(self, df: pd.DataFrame, template_path: str):
-        ccta_ctxt = df['CCTA 報告']
+        ccta_ctxt = df.get('CCTA 報告', df.get('Report'))
         # print(ccta_ctxt)
-        pid = df.get('病歷號', df.get('病歷號碼', None))
+        pid = df.get('病歷號', df.get('病歷號碼', df.get('ReportID', None)))
         assert pid is not None
         # print(pid)
         check_date = df.get('檢查日期', None)
@@ -45,7 +46,7 @@ class CCTA:
         self.noncardiac_analysis: list = list()
         self.agatston: dict = dict()
         self.status = [False] * 4
-        report_segment = ccta_ctxt.split('\n\n')
+        report_segment = re.split('\n[ ]{0,}\n', ccta_ctxt)
 
         # print(*report_segment, sep='|END_OF_SEG|\n')
         # self.results = report_segment[2].split('\n')[1:]
@@ -59,8 +60,8 @@ class CCTA:
         for line in _extract_section(report_segment, "Agatston score:").split('\n')[1:]:
             line = line.replace("\n", "")
             # print(line)
-            key, value = line.split(': ')
-            key = key[2:]  # Remove list symbol, ex: "* "
+            key, value = re.split(':[ ]{0,}', line)
+            key = re.split('[ ]{0,}\*[ ]{0,}', key)[-1]  # Remove list symbol, ex: "* "
             pure_digit = value.replace(' ', '')
 
             # Using regex to detect is a numerical string or not
@@ -75,7 +76,8 @@ class CCTA:
 
             self.agatston[key] = {'value': value, 'ps': ps}
             self.status[0] = True
-        del self.agatston['Total']
+        if 'Total' in self.agatston:
+            del self.agatston['Total']
 
         # Process Coronary Analysis
         if (section := _extract_section(report_segment, "Coronary artery analysis:")) is not None:
@@ -363,11 +365,22 @@ class NiiCTContainer:
         self.pid = pid
 
     def len(self, key: dt.datetime | str) -> int:
+        if key is None:
+            _tmp = list()
+            for _comp in self.legal_path.values():
+                _tmp.extend(_comp)
+            return len(_tmp)
+
         if isinstance(key, str):
             key = dt.datetime.strptime(key, '%Y%m%d%H%M%S')
         return len(self.legal_path.get(key))
 
     def __getitem__(self, item):
+        if item is None:
+            _all_comp = list()
+            for comp in list(self.legal_path.values()):
+                _all_comp.extend(comp)
+            return _all_comp
         return self.legal_path.get(item)
 
     def __eq__(self, other) -> bool:
@@ -397,6 +410,8 @@ def build_ccta(df_entity: pd.DataFrame, template_path: str) -> CCTA:
     try:
         ccta = CCTA(df_entity, template_path=template_path)
     except Exception as e:
+        print(traceback.format_exc())
+        # print(df_entity)
         ccta = None
 
     return ccta
