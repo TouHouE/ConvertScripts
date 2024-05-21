@@ -55,17 +55,17 @@ def merge_path_and_prompt(nii: PSU.NiiCTContainer, prompt_list: list, date: dt.d
 
 
 def main(args: argparse.Namespace):
-    if isinstance(args.report_file, list):
-        report_list: pd.DataFrame = pd.concat([load_report(sub_file) for sub_file in args.report_file], axis=0, ignore_index=True)
+    if len((sep := args.report_file.split(','))) > 1:
+        report_list: pd.DataFrame = pd.concat([load_report(sub_file) for sub_file in sep], axis=0, ignore_index=True)
     else:
-        report_list: pd.DataFrame = load_report(args.report_file)
+        report_list: pd.DataFrame = load_report(sep[0])
     key_list = list(report_list.columns)
-    if isinstance(args.ct_root, list):
+    if len((sep_ct := args.ct_root.split(','))) > 1:
         nii_list: list[PSU.NiiCTContainer] = list()
-        for _ct_root in args.ct_root:
+        for _ct_root in sep_ct:
             nii_list.extend(load_nii(_ct_root))
     else:
-        nii_list: list[PSU.NiiCTContainer] = load_nii(args.ct_root)
+        nii_list: list[PSU.NiiCTContainer] = load_nii(sep_ct[0])
 
     final_prompt_list: list = []
     cnt = 0
