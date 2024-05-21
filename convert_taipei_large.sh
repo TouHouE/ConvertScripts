@@ -16,7 +16,7 @@ export ISP_MNT="$SHARE/large_isp:/workspace/src/isp"
 export DST_MNT="$SHARE/data:/workspace/data"
 export PROJ_MNT="$HSU/workspace/project:/workspace/project"
 
-export CONTAINER_MOUNT="$SRC_MNT,$DST_MNT,$PROJ_MNT,$PROJ_MNT"
+export CONTAINER_MOUNT="$SRC_MNT,$DST_MNT,$PROJ_MNT,$PROJ_MNT,$ISP_MNT"
 
 export PYTHON_CMD="
 python /workspace/project/ConvertScripts/dcm2niix_Taipei.py \
