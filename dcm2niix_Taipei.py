@@ -824,7 +824,7 @@ def start_main(args: argparse.Namespace):
     sample_pair = dict(name=DIGIT2LABEL_NAME, data=[])
     ignore_list: list[str] = processed_data_list(args)
     legal_file_patient = get_legal_pair(ignore_list, args)
-    print(f'The number of patients waiting to be processed')
+    print(f'The number of patients waiting to be processed: {len(legal_file_patient)}')
     sub_world = np.array_split(legal_file_patient, nproc)
     sub_world = [Partition(PID=i, patient_list=sworld, args=args) for i, sworld in enumerate(sub_world)]
 
