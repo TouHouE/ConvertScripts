@@ -498,7 +498,7 @@ def process_isp(isp_root: str, pid: str, args: argparse.Namespace, output_dir: s
         _, pid = pid.split('/')
         # isp_root = f'{isp_root}/{folder}'
 
-    print(f'Walk under {isp_root}/{pid}')
+    print(f'Walk under {isp_root}/{pid}, is exist?{os.path.exists("{isp_root}/{pid}")}')
     for root, dirs, files in os.walk(f'{isp_root}/{pid}', topdown=True):
         # The ISP file name format only end with .dcm
         legal_isp = list(filter(lambda x: x.endswith('.dcm'), [f'{root}/{name}' for name in files]))
