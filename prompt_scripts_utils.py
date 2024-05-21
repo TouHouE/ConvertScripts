@@ -32,9 +32,10 @@ class CCTA:
     def __init__(self, df: pd.DataFrame, template_path: str):
         ccta_ctxt = df['CCTA 報告']
         # print(ccta_ctxt)
-        pid = df['病歷號']
+        pid = df.get('病歷號', df.get('病歷號碼', None))
+        assert pid is not None
         # print(pid)
-        check_date = df['檢查日期']
+        check_date = df.get('檢查日期', None)
         self.template_path = template_path
         self.ccta_ctxt = ccta_ctxt
         self.report_id = str(pid).lower()

@@ -23,8 +23,8 @@ def load_report(path) -> pd.DataFrame:
 
 def get_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser()
-    parser.add_argument('--report_file', type=str)
-    parser.add_argument('--ct_root', type=str)
+    parser.add_argument('--report_file')
+    parser.add_argument('--ct_root')
     parser.add_argument('--prompt_template_path', type=str, default='./template.json')
     parser.add_argument('--json_path', type=str, default='./medical-conversations.json')
     return parser
@@ -55,9 +55,18 @@ def merge_path_and_prompt(nii: PSU.NiiCTContainer, prompt_list: list, date: dt.d
 
 
 def main(args: argparse.Namespace):
-    report_list = load_report(args.report_file)
+    if isinstance(args.report_file, list):
+        report_list: pd.DataFrame = pd.concat([load_report(sub_file) for sub_file in args.report_file], axis=0, ignore_index=True)
+    else:
+        report_list: pd.DataFrame = load_report(args.report_file)
     key_list = list(report_list.columns)
-    nii_list: list[PSU.NiiCTContainer] = load_nii(args.ct_root)
+    if isinstance(args.ct_root, list):
+        nii_list: list[PSU.NiiCTContainer] = list()
+        for _ct_root in args.ct_root:
+            nii_list.extend(load_nii(_ct_root))
+    else:
+        nii_list: list[PSU.NiiCTContainer] = load_nii(args.ct_root)
+
     final_prompt_list: list = []
     cnt = 0
 
