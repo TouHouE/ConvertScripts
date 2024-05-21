@@ -495,7 +495,8 @@ class CTContainer:
 def process_isp(isp_root: str, pid: str, args: argparse.Namespace, output_dir: str = './mask') -> list[ISPContainer]:
     isp_list = []
     if args.large_ct:
-        pid = pid.split('/')[-1]
+        folder, pid = pid.split('/')
+        isp_root = f'{isp_root}/{folder}'
 
     for root, dirs, files in os.walk(f'{isp_root}/{pid}', topdown=True):
         # The ISP file name format only end with .dcm
@@ -508,11 +509,16 @@ def process_isp(isp_root: str, pid: str, args: argparse.Namespace, output_dir: s
 
 
 def process_ct(
-        ct_root: str, pid: str,
-        output_dir: str = './out', buf_dir: str = './buf'
+        ct_root: str, pid: str, args,
+        output_dir: str, buf_dir: str
 ) -> tuple[list[DeDuplicateCT], list[Any]]:
     pid_ct_list: [DeDuplicateCT] = []
     error_ct_list: [str] = []
+
+    if args.large_ct:
+        folder, pid = pid.split('/')
+        ct_root = f'{ct_root}/{folder}'
+
     for root, dirs, files in os.walk(f'{ct_root}/{pid}', topdown=True):
         legal_dcm = list(filter(lambda x: legal_dcm_path(x), [f'{root}/{name}' for name in files]))
         if len(legal_dcm) < 10 or len(dirs) > 0:
@@ -574,7 +580,7 @@ def single_main(pid: str, args: argparse.Namespace, ct_path_args=None, isp_path_
     isp_root = args.isp_root
     # print(f'Root of CT: {ct_root}, Root of ISP: {isp_root}')
     # Start Loading all CT dicom file and ISP dicom file into program.
-    ct_pack = process_ct(ct_root, pid, **ct_path_args)
+    ct_pack = process_ct(ct_root, pid, args=args, **ct_path_args)
     ct_list: list[DeDuplicateCT | CTContainer] = ct_pack[0]
     ct_error_list: list[str] = ct_pack[1]
     isp_list: list[ISPContainer] = process_isp(isp_root, pid, args=args, **isp_path_args)
@@ -678,6 +684,7 @@ def full_pid(partition: Partition) -> list:
             if args.large_ct:
                 folder, _pid = pid.split('/')
                 err_dir = f'{args.err_dir}/{folder}'
+                os.makedirs(f'{err_dir}', exist_ok=True)
             else:
                 err_dir = args.err_dir
                 _pid = pid
