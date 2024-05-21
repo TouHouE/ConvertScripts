@@ -495,8 +495,8 @@ class CTContainer:
 def process_isp(isp_root: str, pid: str, args: argparse.Namespace, output_dir: str = './mask') -> list[ISPContainer]:
     isp_list = []
     if args.large_ct:
-        folder, pid = pid.split('/')
-        isp_root = f'{isp_root}/{folder}'
+        _, pid = pid.split('/')
+        # isp_root = f'{isp_root}/{folder}'
 
     for root, dirs, files in os.walk(f'{isp_root}/{pid}', topdown=True):
         # The ISP file name format only end with .dcm
