@@ -15,9 +15,9 @@ def load_nii(path) -> list[PSU.NiiCTContainer]:
 
 def load_report(path) -> pd.DataFrame:
     if path.endswith(".xlsx"):
-        return pd.read_excel(path)
+        return pd.read_excel(path, encoding='ISO-8859-1')
     elif path.endswith('.csv'):
-        return pd.read_csv(path)
+        return pd.read_csv(path, encoding='ISO-8859-1')
     return None
 
 
