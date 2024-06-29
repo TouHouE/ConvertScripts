@@ -1,22 +1,24 @@
+import re
+import os
 import sys
+import json
+import shutil
 import zipfile
 import argparse
 import traceback
-import multiprocessing as mp
-import json
-from functools import partial
+import dataclasses
 import datetime as dt
 import subprocess as sp
-import numpy as np
-from typing import Union, Tuple, Any, Callable, List, TypeVar, NewType
-import pydicom as pyd
-import os
-import re
-import nibabel as nib
-import isp_helper as ISPH
-import dataclasses
-import shutil
+import multiprocessing as mp
+from functools import partial
 from operator import methodcaller
+from typing import Union, Tuple, Any, Callable, List, TypeVar, NewType
+
+import numpy as np
+import nibabel as nib
+import pydicom as pyd
+
+import isp_helper as ISPH
 
 DIGIT2LABEL_NAME = {
     1: 'RightAtrium',
@@ -35,11 +37,14 @@ CardiacPhase = NewType('CardiacPhase', Union[float, int])
 FilePathPack = NewType('FilePathPack', tuple[pyd.FileDataset, str])
 IS_ZIP: methodcaller = methodcaller('endswith', '.zip')
 
+
 @dataclasses.dataclass
 class Partition:
     PID: int
     patient_list: list[str]
     args: argparse.Namespace
+
+
 def get_desc(dcm: pyd.FileDataset) -> str:
     """
         Trying to get the description from an ISP Dicom file, the possible tag are (0x0008, 0x1032) and (0x0008, 0x103e)
@@ -95,7 +100,10 @@ def fix_copy(src_pack: tuple[pyd.FileDataset, str], dst: str) -> None:
     dcm.save_as(dst)
 
 
-def get_tag(dcm: pyd.FileDataset, tag: Tuple[int, int], default_value: Any = None, need_state: bool = True) -> tuple[str, Any | None] | Union[Any, None]:
+def get_tag(dcm: pyd.FileDataset, tag: Tuple[int, int], default_value: Any = None, need_state: bool = True) -> tuple[
+                                                                                                                   str, Any | None] | \
+                                                                                                               Union[
+                                                                                                                   Any, None]:
     if (info := dcm.get(tag)) is not None:
         return 'Normal', info.value if need_state else info.value
     return 'Unreadable', default_value if need_state else default_value
@@ -121,6 +129,7 @@ def find_isp_uid(isp: pyd.FileDataset) -> str:
             return _str
         else:
             return _str.decode('ISO_IR 100', 'strict')
+
     uid_pack = isp.get((0x0008, 0x1115))
     if uid_pack is None:
         return _make_sure_is_str(isp.get((0x01e1, 0x1046)).value).split('_')[-3]
@@ -135,10 +144,11 @@ class ISPContainer:
     tissue_list: list[pyd.FileDataset]
     path_list: list[pyd.FileDataset]
     is_saved: bool
+
     def __init__(
             self, isp_list: list[str], pid: str,
             folder_name: str, output_dir: str = './mask',
-            args: argparse.Namespace=None, verbose: int = 0
+            args: argparse.Namespace = None, verbose: int = 0
     ) -> None:
         """
         An ISPContainer object is used to package an isp annotation folder, each folder has multiple "Findings"
@@ -265,8 +275,9 @@ class ISPContainer:
             nib.save(plaque_nii, f'{store_path}/union_plaque.nii.gz')
             self.final_path['plaque'] = f'{store_path}/union_plaque.nii.gz'
         self.is_saved = True
+
     def __repr__(self):
-        ctxt = f'{"="*30}\n'
+        ctxt = f'{"=" * 30}\n'
         ctxt = f'{ctxt}Patient ID   :{self.pid}\n'
         ctxt = f'{ctxt}Series NUM   :{self.snum}\n'
         ctxt = f'{ctxt}UID          :{self.uid}\n'
@@ -279,6 +290,7 @@ class ISPContainer:
                 ctxt = f'{ctxt}{key:13}:{value}\n'
 
         return ctxt
+
     def get_store_path(self):
         _final_path = self.final_path.copy()
         for key, value in _final_path.items():
@@ -292,8 +304,6 @@ def commandline(ct_output_path: str, buf_path: str, verbose: int = 0, dcm2niix_p
         print(f'{" DCM2NIIX INFO ":=^40}')
     else:
         kwargs = dict(stdout=sp.DEVNULL, stderr=sp.STDOUT)
-
-
 
     sp.call(
         [dcm2niix_path,
@@ -449,7 +459,6 @@ class CTContainer:
             same_uid = self.uid == other.uid
             is_equal = False
 
-
             # Strict equally
             if snum2 != 0:
                 is_equal = same_snum
@@ -541,7 +550,7 @@ def process_ct(
             status, uid = get_tag(dcm, (0x0020, 0x000e))
             status, stime = get_tag(dcm, (0x0008, 0x0030))
             status, snum = get_tag(dcm, (0x0020, 0x0011), None)
-            if cp2uid_map.get(cp) is None: # Initial The first cases.
+            if cp2uid_map.get(cp) is None:  # Initial The first cases.
                 cp2uid_map[cp] = list()
                 cp2dcm_map[cp] = list()
                 cp2time_map[cp] = list()
@@ -561,9 +570,9 @@ def process_ct(
                 corresponding_dcm, pid, uid, args=args, cp=cardiac_phase, snum=cp2snum_map[cardiac_phase],
                 fix_tag0008_0030=fix_stime, output_dir=output_dir, buf_dir=buf_dir, verbose=0
             )
-            if buffer_ct in pid_ct_list: # This value is True mean, it may duplicate ct-series happen
+            if buffer_ct in pid_ct_list:  # This value is True mean, it may duplicate ct-series happen
                 pid_ct_list[pid_ct_list.index(buffer_ct)].append(buffer_ct)
-            else: # Here is the first-time
+            else:  # Here is the first-time
                 pid_ct_list.append(DeDuplicateCT(buffer_ct))
 
     print(f'CT-stage Done.')
@@ -715,7 +724,8 @@ def full_pid(partition: Partition) -> list:
 def test_main():
     sample_pair = dict(name=DIGIT2LABEL_NAME, data=[])
     legal_file_patint = list(filter(lambda x: os.path.isdir(rf'F:\CCTA\{x}'), os.listdir(r'F:\CCTA')))
-    world = ['0001', '2098', '0003', '0060', *np.random.choice(list(set(legal_file_patint) - {'2098', '0003', '0060'}), size=7, replace=False)]
+    world = ['0001', '2098', '0003', '0060',
+             *np.random.choice(list(set(legal_file_patint) - {'2098', '0003', '0060'}), size=7, replace=False)]
     print(world)
     for pid in world:
         supervised_list = single_main(pid)
@@ -772,7 +782,7 @@ def unzip(args, folder, member) -> str | None:
 
 
 def get_legal_pair(ignore_list: list[str], args: argparse.Namespace) -> list[str]:
-    if not args.large_ct: # Process 502-CT ignore list
+    if not args.large_ct:  # Process 502-CT ignore list
         print(f'Is 502CT')
         ALL_MEMBER = os.listdir(args.data_root)
         print(f'Size of member: {len(ALL_MEMBER)}')
