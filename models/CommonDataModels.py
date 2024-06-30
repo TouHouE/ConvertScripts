@@ -1,6 +1,6 @@
 import argparse
 import multiprocessing as mp
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Iterable, List, Optional
 
 import numpy as np
@@ -15,9 +15,9 @@ class Partition:
     proc_id: int
     data: list | np.ndarray | Iterable
     args: argparse.Namespace
-    out_dir: Optional[str]
-    buf_dir: Optional[str]
-    err_dir: Optional[str]
+    out_dir: str = field(default='./out')
+    buf_dir: str = field(default='./buf')
+    err_dir: str = field(default='./err')
 
     def __post_init__(self):
         if self.out_dir is None:

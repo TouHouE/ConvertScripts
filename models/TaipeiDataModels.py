@@ -297,7 +297,7 @@ class TaipeiCTHandler:
 
     def __eq__(self, other) -> bool:
 
-        if isinstance(other, 'TaipeiISPHandler'):
+        if isinstance(other, TaipeiISPHandler):
             if self.verbose:
                 print("=" * 30)
                 print(f'Compare    | CT:{self.final_path} vs ISP: {other.folder_name}')
@@ -319,7 +319,7 @@ class TaipeiCTHandler:
             if cp2 != 0:
                 is_equal = is_equal and same_cp
             return is_equal
-        if isinstance(other, 'TaipeiCTHandler'):
+        if isinstance(other, TaipeiCTHandler):
             return self.ct_output_path == other.ct_output_path
 
     def __repr__(self):
