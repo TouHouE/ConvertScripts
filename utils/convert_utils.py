@@ -1,7 +1,13 @@
+import os
+import re
+import json
 import shutil
+import zipfile
+import argparse
+import traceback
 import datetime as dt
 import subprocess as sp
-from typing import Tuple, Any, Union, Callable
+from typing import Tuple, Any, Union, Callable, List, Optional
 
 import pandas as pd
 import pydicom as pyd
@@ -114,3 +120,97 @@ def make_path(df: pd.DataFrame):
     uid = df['uid'].unique()[0]
     cp = float(df['cp'].unique()[0])
     return f'{pid}/{snum}/{uid}/{cp}'
+
+
+def legal_dcm_path(path: str) -> bool:
+    """
+        Check if a path is legal, if got <instance number>[<number>].dcm mean duplication file.
+        the sub name must dcm.
+        :param path:
+        :return : is legal or not
+        """
+    file_name = re.split('[/\\\]', path)[-1]
+    is_dcm = path.endswith('.dcm')
+    # not_dup = re.match('\[[1-9]{1,}\]', path.split('.')[0][-3:]) is None
+    not_dup = file_name.split('.')[0].isdigit()
+    return is_dcm and not_dup
+
+
+def legal_patient_folder(path: str | List[str], ignore_condition: Optional[List[str]] = None) -> bool:
+    if isinstance(path, str):
+        patient_name: str = re.split('[/\\\]', path)[-1]
+    else:
+        patient_name: str = path[-1]
+        path: str = '/'.join(path)
+    is_dir = os.path.isdir(path)
+    is_ignore_patient = False
+
+    if ignore_condition is not None:
+        is_ignore_patient = patient_name in ignore_condition
+    return is_dir and not is_ignore_patient
+
+
+def unzip(args, folder, member) -> str | List[str]:
+    """
+        Return a list of error message if got error, otherwise, the return will be the patient id
+    :param args:
+    :param folder:
+    :param member:
+    Returns:
+
+    """
+    patient_name = member.split('.')[0]
+    try:
+        with zipfile.ZipFile(f'{args.data_root}/{folder}/{member}', 'r') as unzipper:
+            top = unzipper.filelist[0]
+            if top.filename == patient_name:
+                # This statement for if the patient folder already in *.zip
+                # Thus, I don't prepare a folder to store all CT-series
+                dst = f'{args.data_root}/{folder}'
+            else:
+                # This statement for if the patient folder not in the *.zip.
+                dst = f'{args.data_root}/{folder}/{patient_name}'
+
+            unzipper.extractall(dst)
+    except Exception as e:
+        content = ['=' * 30, f'{args.data_root}/{folder}/{member}', traceback.format_exc()]
+        return content
+
+    return patient_name
+
+
+def record_offal_sample(offal_isp, offal_ct, args):
+    unpair_path = rf'{args.meta_dir}/unpair/{args.pid}'
+    os.makedirs(unpair_path, exist_ok=True)
+    unpair_obj = dict(isp=[], ct=[])
+    for oisp in offal_isp:
+        unpair_obj['isp'].append(oisp.folder_name)
+    for o_ct in offal_ct:
+        # Here is old method.
+        # unpair_obj['ct'].append(o_ct.final_path)
+        unpair_obj['ct'].append(o_ct.get_store_path())
+    with open(f'{unpair_path}/unpair.json', 'w+') as jout:
+        json.dump(unpair_obj, jout)
+
+
+def filter_legal_patient_folder(args: argparse.Namespace, ignore_condition: Optional[List[str]] = None) -> List[str]:
+    legal_patient_list: List[str] = list()
+
+    for x in os.listdir(args.data_root):
+        if legal_patient_folder([args.data_root, x], ignore_condition):
+            legal_patient_list.append(x)
+    return legal_patient_list
+
+
+def filter_legal_dcm(dcm_list: List[str]) -> List[str]:
+    legal_dcm: List[str] = list()
+
+    for name in dcm_list:
+        if legal_dcm_path(name):
+            legal_dcm.append(name)
+    return legal_dcm
+
+
+
+
+

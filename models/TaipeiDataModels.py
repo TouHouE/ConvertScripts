@@ -17,6 +17,7 @@ __all__ = [
     'TaipeiCTDeduplicator', 'TaipeiCTHandler', 'TaipeiISPHandler'
 ]
 
+
 DIGIT2LABEL_NAME = {
     1: 'RightAtrium',
     2: 'RightVentricle',
@@ -32,7 +33,7 @@ DIGIT2LABEL_NAME = {
 LABEL_NAME2DIGIT = {value: key for key, value in DIGIT2LABEL_NAME.items()}
 
 
-class TaipeiISPHandler:
+class TaipeiISPHandler(object):
     shape: tuple[int, int, int] | list[int, int, int]
     final_path: dict[str, str]
     plaque_num: int
@@ -46,13 +47,14 @@ class TaipeiISPHandler:
             args: argparse.Namespace = None, verbose: int = 0
     ) -> None:
         """
-            A `TaipeiISPHandler` object is used to package an isp annotation folder, each folder has multiple "Findings"
-        :param isp_list: Only contains a sequence of isp annotation dicom file's path
-        :param pid: Patient ID
-        :param folder_name: This parameter is used to easily identify the original path
-        :param output_dir: A `TaipeiISPHandler` object goal is to save the tissue mask, and plaque mask into nifit file,
-        the mask will be saved in :param output_dir
-        :param verbose: if is 1, then print all process detail, if is 0, don't print anything.
+        A `TaipeiISPHandler` object is used to package an isp annotation folder, each folder has multiple "Findings"
+        Args:
+            isp_list: Only contains a sequence of isp annotation dicom file's path
+            pid: Patient ID
+            folder_name: This parameter is used to easily identify the original path
+            output_dir: A `TaipeiISPHandler` object goal is to save the tissue mask, and plaque mask into nifit file,
+            the mask will be saved in :param output_dir
+            verbose: if is 1, then print all process detail, if is 0, don't print anything.
         """
         self.output_dir: str = output_dir
         self.total_list: list[str] = isp_list
