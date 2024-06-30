@@ -16,55 +16,14 @@ import nibabel as nib
 import pydicom as pyd
 
 import models
+from constant import DIGIT2LABEL_NAME, LABEL_NAME2DIGIT
 from utils import convert_utils as CUtils
 from utils import common_utils as ComUtils
 from utils.data_typing import CardiacPhase, FilePathPack
 
-DIGIT2LABEL_NAME = {
-    1: 'RightAtrium',
-    2: 'RightVentricle',
-    3: 'LeftAtrium',
-    4: 'LeftVentricle',
-    5: 'MyocardiumLV',
-    6: 'Aorta',
-    7: 'Coronaries8',
-    8: 'Fat',
-    9: 'Bypass',
-    10: 'Plaque'
-}
-LABEL_NAME2DIGIT = {value: key for key, value in DIGIT2LABEL_NAME.items()}
 IS_ZIP: methodcaller = methodcaller('endswith', '.zip')
 WRAP_ERR: itemgetter = itemgetter(1)
 WRAP_DATA: itemgetter = itemgetter(0)
-STATUS_LEN: int = 15
-
-
-def print_info(status: str, info: str | Dict[str, Any], args: argparse.Namespace):
-    """
-    Using to print the program message on terminal with format:
-    `Process-{proc_id}|[@param{status}]|[progress / total patient]|[patient id]|info, time:{start time}`
-    Args:
-        status: like Start, End, Error, Loading
-        info: What info want to print
-        args: must contain
-            <br>- proc_id
-            <br/>- patient_progress: like "current patient's index/# of patient"
-            |- pid: patient's id
-    """
-    _proc = f'Process-{args.proc_id:02}'
-    _status = f'{status:^{STATUS_LEN}}'
-    _p_prog = f'{args.patient_progress}'
-    t0 = dt.datetime.now()
-
-    if isinstance(info, dict):
-        info_dict = info.copy()
-        info: str = ''
-        for key, value in info_dict.items():
-            info = f'{info}, {key}: {value}'
-    if len(info) < 1:
-        print(f'{_proc}|[{_status}]|[{_p_prog}]|[{args.pid}]| time:{t0:%Y-%m-%d %H:%M:%S}')
-    else:
-        print(f'{_proc}|[{_status}]|[{_p_prog}]|[{args.pid}]| {info}, time:{t0:%Y-%m-%d %H:%M:%S}')
 
 
 def collect_ct_info(legal_dcm: List[str]) -> Dict[str, Dict[CardiacPhase, Any]]:
@@ -167,7 +126,7 @@ def build_ct_list(
     return pid_ct_list, error_ct_list
 
 
-def map_ct_and_isp_and_deduplicate_ct(
+def build_ct_isp_pair(
         ct_list: list[models.taipei.TaipeiCTDeduplicator | models.taipei.TaipeiCTHandler],
         isp: models.taipei.TaipeiISPHandler
 ) -> List[Dict[str, str | CardiacPhase | int | float]]:
@@ -218,7 +177,7 @@ def patient_proc(
     isp_list: list[models.taipei.TaipeiISPHandler] = build_isp_list(isp_root, pid, args=args, **isp_path_args)
     # Loading Done.
     info = f'len ct: {len(ct_list)}, len isp: {len(isp_list)}'
-    print_info('Load CT&ISP', info, args)
+    ComUtils.print_info('Load CT&ISP', info, args)
 
     pair_list = list()
     offal_isp = list()
@@ -231,7 +190,7 @@ def patient_proc(
             offal_isp.append(isp)
             continue
         # The isp maybe can match to multiple CT
-        sub_pair_list = map_ct_and_isp_and_deduplicate_ct(ct_list, isp)
+        sub_pair_list = build_ct_isp_pair(ct_list, isp)
         pair_list.append(sub_pair_list)
         remain_isp = len(isp_list)
     else:
@@ -267,7 +226,7 @@ def start_proc(partition: models.Partition) -> list:
         setattr(args, 'patient_progress', patient_progress)
         setattr(args, 't0', t0)
         setattr(args, 'pid', pid)
-        print_info('Start', '', args)
+        ComUtils.print_info('Start', '', args)
 
         try:
             pid_result, ct_error_list = patient_proc(pid, args)
@@ -286,7 +245,7 @@ def start_proc(partition: models.Partition) -> list:
             suffix = 'Error'
 
         tn = dt.datetime.now()
-        print_info(
+        ComUtils.print_info(
             suffix, info=dict(cost=tn - t0), args=args
         )
 
