@@ -236,6 +236,7 @@ class TaipeiCTHandler:
         self.buf_dir: str = buf_dir
         self.buf_path: str = f'{buf_dir}/{pid}/{snum}/{uid}/{cp}/cand_0'
         self.ct_output_path: str = f'{output_dir}/{pid}/{snum}/{uid}/{cp}/cand_0'
+        self.nii_gz_file_name: str
         self.args = args
 
         # Store all candidate.
@@ -290,9 +291,9 @@ class TaipeiCTHandler:
             print(f'CT Shape     :{self.nifit_ct.get_fdata().shape}')
         self.clean_buf()  # After all process, clean the buffer space.
 
-    def get_store_path(self):
-        _final_path = self.ct_output_path
-        _final_path = _final_path.replace(self.args.dst_root, '')
+    def get_store_path(self) -> str:
+        _final_path: str = self.final_path
+        _final_path: str = _final_path.replace(self.args.dst_root, '')
         return _final_path
 
     def __eq__(self, other) -> bool:

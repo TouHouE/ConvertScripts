@@ -26,11 +26,11 @@ def print_info(status: str, info: str | Dict[str, Any], args: argparse.Namespace
         info_dict = info.copy()
         info: str = ''
         for key, value in info_dict.items():
-            info = f'{info}, {key}: {value}'
+            info = f'{info} {key}: {value},'
     if len(info) < 1:
         print(f'{_proc}|[{_status}]|[{_p_prog}]|[{args.pid}]| time:{t0:%Y-%m-%d %H:%M:%S}')
     else:
-        print(f'{_proc}|[{_status}]|[{_p_prog}]|[{args.pid}]| {info}, time:{t0:%Y-%m-%d %H:%M:%S}')
+        print(f'{_proc}|[{_status}]|[{_p_prog}]|[{args.pid}]| {info} time:{t0:%Y-%m-%d %H:%M:%S}')
 
 
 def time2str(_time: dt.datetime | dt.time | dt.timedelta) -> str:

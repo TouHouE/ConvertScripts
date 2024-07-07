@@ -1,7 +1,6 @@
 import re
 import os
 import json
-import zipfile
 import argparse
 import traceback
 import datetime as dt
@@ -9,7 +8,7 @@ import multiprocessing as mp
 from copy import deepcopy
 from functools import partial
 from operator import methodcaller, itemgetter
-from typing import Union, Tuple, Any, Callable, List, TypeVar, NewType, Dict, Iterable
+from typing import Tuple, Any, Callable, List, Dict, Iterable, Optional
 
 import numpy as np
 import nibabel as nib
@@ -19,7 +18,7 @@ import models
 from constant import DIGIT2LABEL_NAME, LABEL_NAME2DIGIT
 from utils import convert_utils as CUtils
 from utils import common_utils as ComUtils
-from utils.data_typing import CardiacPhase, FilePathPack
+from utils.data_typing import CardiacPhase, FilePathPack, IspCtPair
 
 IS_ZIP: methodcaller = methodcaller('endswith', '.zip')
 WRAP_ERR: itemgetter = itemgetter(1)
@@ -129,38 +128,49 @@ def build_ct_list(
 def build_ct_isp_pair(
         ct_list: list[models.taipei.TaipeiCTDeduplicator | models.taipei.TaipeiCTHandler],
         isp: models.taipei.TaipeiISPHandler
-) -> List[Dict[str, str | CardiacPhase | int | float]]:
-    sub_pair = list()
+) -> List[IspCtPair]:
+    sub_pair: List[IspCtPair] = list()
+
     for idx, confusion_ct in enumerate(ct_list):
         if confusion_ct != isp:
             continue
+        # The `final_ct` is the only ct after deduplicator
         final_ct: models.taipei.TaipeiCTHandler
 
         if isinstance(confusion_ct, models.taipei.TaipeiCTDeduplicator):
             final_ct = confusion_ct(isp)
-            final_ct.store()
+            final_ct.store()    # Store .nii.gz ct file after deduplicate.
             final_ct.has_pair = True
-            ct_list[idx] = final_ct
+            ct_list[idx] = final_ct     # Replace the deduplicator with only ct(`models.taipei.TaipeiCTHandler`)
         else:
             final_ct = confusion_ct
 
         isp.store_mask(final_ct)
-        pair = {
-            # 'image': duplicate_ct.final_path,
+        pair: IspCtPair = IspCtPair({
             'image': final_ct.get_store_path(),
             'cp': final_ct.cp,
             'pid': final_ct.pid,
             'uid': final_ct.uid
-        }
-        # pair.update(isp.final_path)
+        })
         pair.update(isp.get_store_path())
         sub_pair.append(pair)
     return sub_pair
 
 
 def patient_proc(
-        pid: str, args: argparse.Namespace, ct_path_args=None, isp_path_args=None
-) -> Tuple[List[Dict[str, str | CardiacPhase | int | float]], ]:
+        pid: str, args: argparse.Namespace, ct_path_args: Optional[Dict[str, Any]] = None, isp_path_args=None
+) -> Tuple[List[IspCtPair], List[str]]:
+    """
+    Process single patient data and return
+    Args:
+        pid(str): patient id
+        args(argparse.Namespace): The user arguments and some print info
+        ct_path_args(Dict[str, Any]): is Optional, store `output_dir`, and `buf_dir` for ```build_ct_list``` function
+        isp_path_args(Dict[str, Any]): is Optional, store `output_dir` for ```build_isp_list``` function
+
+    Returns(Tuple[List[IspCtPair], List[str]]):
+
+    """
     if ct_path_args is None:
         ct_path_args = dict(output_dir=args.out_dir, buf_dir=args.buf_dir)
     if isp_path_args is None:
@@ -176,12 +186,15 @@ def patient_proc(
 
     isp_list: list[models.taipei.TaipeiISPHandler] = build_isp_list(isp_root, pid, args=args, **isp_path_args)
     # Loading Done.
+    # Show some information.
     info = f'len ct: {len(ct_list)}, len isp: {len(isp_list)}'
     ComUtils.print_info('Load CT&ISP', info, args)
+    # Show information done.
 
-    pair_list = list()
+    pair_list: List[IspCtPair] = list()
     offal_isp = list()
     remain_isp: int = len(isp_list)
+
     # Using to match all of isp to correctly CT series
     while remain_isp > 0:
         isp = isp_list.pop(0)
@@ -190,8 +203,8 @@ def patient_proc(
             offal_isp.append(isp)
             continue
         # The isp maybe can match to multiple CT
-        sub_pair_list = build_ct_isp_pair(ct_list, isp)
-        pair_list.append(sub_pair_list)
+        sub_pair_list: List[IspCtPair] = build_ct_isp_pair(ct_list, isp)
+        pair_list.extend(sub_pair_list)
         remain_isp = len(isp_list)
     else:
         # All of here is unpair CT, even that, there are good self-training data.
@@ -213,6 +226,14 @@ def patient_proc(
 
 
 def start_proc(partition: models.Partition) -> list:
+    """
+    Each process will start from this method
+    Args:
+        partition(models.Partition): include assign sub data sequence, process id and user arguments.
+
+    Returns:
+
+    """
     proc_id: int = partition.PID
     pid_list: List[str] | np.ndarray | Iterable = partition.patient_list
     args: argparse.Namespace = deepcopy(partition.args)
@@ -229,15 +250,14 @@ def start_proc(partition: models.Partition) -> list:
         ComUtils.print_info('Start', '', args)
 
         try:
-            pid_result, ct_error_list = patient_proc(pid, args)
+            pid_result, raw_error_list = patient_proc(pid, args)
             results.extend(pid_result)
-            meta_dir = args.meta_dir
-            err_dir = args.err_dir
+            error_list_to_store: List[str] = [f'[{ComUtils.time2str(t0)}]|{err_file}' for err_file in raw_error_list]
 
-            error_list_to_store: List[str] = [f'[{ComUtils.time2str(t0)}]|{err_file}' for err_file in ct_error_list]
+            ComUtils.write_content(rf'{args.meta_dir}/{pid}.json', pid_result, as_json=True)
 
-            ComUtils.write_content(rf'{meta_dir}/{pid}.json', pid_result, as_json=True)
-            ComUtils.write_content(rf'{err_dir}/{pid}.txt', error_list_to_store, cover=False, as_json=False)
+            if len(error_list_to_store) > 0:    # If no error don't write down any error message.
+                ComUtils.write_content(rf'{args.err_dir}/{pid}.txt', error_list_to_store, cover=False, as_json=False)
             suffix = 'Done'
         except Exception as e:
             error_content = [e.args, traceback.format_exc()]
@@ -301,7 +321,10 @@ def main(args: argparse.Namespace):
     sub_world = [models.Partition(proc_id=i, data=sworld, args=args) for i, sworld in enumerate(sub_world)]
 
     with mp.Pool(processes=nproc) as pool:
-        sample_pair['data'].extend(pool.map(start_proc, sub_world))
+        all_results = pool.map(start_proc, sub_world)
+        for proc_result in all_results:
+            sample_pair['data'].extend(proc_result)
+        # sample_pair['data'].extend(pool.map(start_proc, sub_world))
     ComUtils.write_content(rf'{args.meta_dir}/sample.json', sample_pair, as_json=True)
 
 

@@ -8,7 +8,7 @@ import numpy as np
 from utils import convert_utils as CUtils
 
 __all__ = [
-    'Partition'
+    'Partition', 'IspCtPair'
 ]
 @dataclass
 class Partition:
@@ -35,3 +35,10 @@ class Partition:
     def patient_list(self) -> list | np.ndarray | Iterable:
         return self.data
 
+@dataclass
+class IspCtPair:
+    image: str
+    cp: float | int
+    pid: str
+    uid: str
+    mask: str
