@@ -7,7 +7,7 @@ import argparse
 import traceback
 import datetime as dt
 import subprocess as sp
-from typing import Tuple, Any, Union, Callable, List, Optional
+from typing import Tuple, Any, Union, Callable, List, Optional, Dict
 
 import pandas as pd
 import pydicom as pyd
@@ -95,6 +95,11 @@ def get_desc(dcm: pyd.FileDataset) -> str:
     return ''
 
 
+def get_init_prepare_df(dcm_collector) -> Dict[str, Any]:
+    _prepare_df = dict()
+    for key in dcm_collector.__dict__():
+        _prepare_df[key] = []
+    return _prepare_df
 def commandline(ct_output_path: str, buf_path: str, verbose: int = 0, dcm2niix_path: str = './lib/dcm2niix.exe'):
     if verbose == 1:
         kwargs = dict()

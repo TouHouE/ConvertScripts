@@ -11,7 +11,7 @@ from utils import convert_utils as CUtils
 from utils.data_typing import CardiacPhase
 
 
-class HsinchuDicomCollector:
+class DicomCollector:
     """
         This class is using to collect all of .dcm from same patient.
     """
@@ -73,7 +73,7 @@ class HsinchuDicomCollector:
         }
 
 
-class HsinchuCTHandler:
+class NiftiHandler:
     """
         This class is using to handle a series of .dcm, its main functional is converted a series of .dcm to .nii.gz
     """
