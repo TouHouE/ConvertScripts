@@ -18,7 +18,7 @@ import models
 from constant import DIGIT2LABEL_NAME, LABEL_NAME2DIGIT
 from utils import convert_utils as CUtils
 from utils import common_utils as ComUtils
-from utils.data_typing import CardiacPhase, FilePathPack, IspCtPair
+from utils.data_typing import CardiacPhase, FilePathPack, IspCtPair, PatientId
 
 IS_ZIP: methodcaller = methodcaller('endswith', '.zip')
 WRAP_ERR: itemgetter = itemgetter(1)
@@ -58,15 +58,16 @@ def collect_ct_info(legal_dcm: List[str]) -> Dict[str, Dict[CardiacPhase, Any]]:
 def build_isp_list(
         isp_root: str, pid: str, args: argparse.Namespace, output_dir: str = './mask'
 ) -> list[models.taipei.TaipeiISPHandler]:
-    isp_list = []
+    isp_list: List[models.taipei.TaipeiISPHandler] = []
 
     for root, dirs, files in os.walk(f'{isp_root}/{pid}', topdown=True):
         # The ISP file name format only end with .dcm
-        legal_isp = list(filter(lambda x: x.endswith('.dcm'), [f'{root}/{name}' for name in files]))
-        if len(legal_isp) < 1 or len(dirs) > 0:
+        legal_isp_list: List[str] = CUtils.filter_legal_dcm([f'{root}/{name}' for name in files])
+        if len(legal_isp_list) < 1 or len(dirs) > 0:
             continue
+
         folder_name = re.split('[/\\\]', root)[-1]
-        isp_list.append(models.taipei.TaipeiISPHandler(legal_isp, pid, folder_name, output_dir, args=args))
+        isp_list.append(models.taipei.TaipeiISPHandler(legal_isp_list, pid, folder_name, output_dir, args=args))
     return isp_list
 
 
@@ -291,16 +292,21 @@ def unzip_proc(args, folder, member) -> str | None:
     return result
 
 
-def initial_ignore_list(args: argparse.Namespace) -> list:
+def initial_ignore_list(args: argparse.Namespace) -> List[PatientId]:
+    pdata: List[PatientId] = list()
     if (ip := args.ignore_path) is not None:
         if ip == 'no':
-            return list()
+            return pdata
+
         with open(ip, 'r') as jin:
-            pdata = json.load(jin)
-        pdata = [ctxt.split('.')[0] for ctxt in pdata]
+            ignore_files_in_json: List[PatientId] = json.load(jin)
+        for ctxt in ignore_files_in_json:
+            patient_id = ctxt.split('.')[0]
+            pdata.append(PatientId(patient_id))
         return pdata
-    meta_dir = args.meta_dir
-    pdata = [name.split('.')[0] for name in os.listdir(meta_dir) if name.endswith('.json')]
+
+    meta_dir: str = args.meta_dir
+    pdata = [PatientId(name.split('.')[0]) for name in os.listdir(meta_dir) if name.endswith('.json')]
     return pdata
 
 
@@ -316,7 +322,7 @@ def main(args: argparse.Namespace):
     setattr(args, 'nproc', nproc)
     print(f'# of workers: {nproc}')
     sample_pair = dict(name=DIGIT2LABEL_NAME, data=[])
-    ignore_list: list[str] = initial_ignore_list(args)
+    ignore_list: list[PatientId] = initial_ignore_list(args)
     legal_file_patient = initial_legal_pair(ignore_list, args)
     print(f'The number of patients waiting to be processed: {len(legal_file_patient)}')
     sub_world = np.array_split(legal_file_patient, nproc)

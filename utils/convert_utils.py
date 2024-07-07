@@ -12,7 +12,7 @@ from typing import Tuple, Any, Union, Callable, List, Optional
 import pandas as pd
 import pydicom as pyd
 
-from utils.data_typing import CardiacPhase
+from utils.data_typing import CardiacPhase, PatientId
 
 
 def _confirm_str(var) -> str:
@@ -124,11 +124,11 @@ def make_path(df: pd.DataFrame):
 
 def legal_dcm_path(path: str) -> bool:
     """
-        Check if a path is legal, if got <instance number>[<number>].dcm mean duplication file.
-        the sub name must dcm.
-        :param path:
-        :return : is legal or not
-        """
+    Check if a path is legal, if got <instance number>[<number>].dcm mean duplication file.
+    the file extension must .dcm.
+    :param path:
+    :return : is legal or not
+    """
     file_name = re.split('[/\\\]', path)[-1]
     is_dcm = path.endswith('.dcm')
     # not_dup = re.match('\[[1-9]{1,}\]', path.split('.')[0][-3:]) is None
@@ -136,7 +136,7 @@ def legal_dcm_path(path: str) -> bool:
     return is_dcm and not_dup
 
 
-def legal_patient_folder(path: str | List[str], ignore_condition: Optional[List[str]] = None) -> bool:
+def legal_patient_folder(path: str | List[str, PatientId], ignore_condition: Optional[List[PatientId]] = None) -> bool:
     if isinstance(path, str):
         patient_name: str = re.split('[/\\\]', path)[-1]
     else:
@@ -193,12 +193,23 @@ def record_offal_sample(offal_isp, offal_ct, args):
         json.dump(unpair_obj, jout)
 
 
-def filter_legal_patient_folder(args: argparse.Namespace, ignore_condition: Optional[List[str]] = None) -> List[str]:
-    legal_patient_list: List[str] = list()
+def filter_legal_patient_folder(
+        args: argparse.Namespace, ignore_condition: Optional[List[PatientId]] = None
+) -> List[PatientId]:
+    """
+
+    Args:
+        args: the script's argument
+        ignore_condition(Optional[List[PatientId])]: all ignored patient id
+
+    Returns:
+        A list that store all patient id
+    """
+    legal_patient_list: List[PatientId] = list()
 
     for x in os.listdir(args.data_root):
         if legal_patient_folder([args.data_root, x], ignore_condition):
-            legal_patient_list.append(x)
+            legal_patient_list.append(PatientId(x))
     return legal_patient_list
 
 
