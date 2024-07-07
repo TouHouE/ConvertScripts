@@ -202,7 +202,7 @@ class TaipeiISPHandler(object):
         return ctxt
 
 
-class TaipeiCTHandler:
+class TaipeiCTHandler(object):
     def __init__(
             self,
             dicom_list: list[tuple[pyd.FileDataset, str]],
@@ -333,7 +333,7 @@ class TaipeiCTHandler:
         return ctxt
 
 
-class TaipeiCTDeduplicator:
+class TaipeiCTDeduplicator(object):
     uid: str
     pid: str
     snum: int

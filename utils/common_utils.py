@@ -8,26 +8,27 @@ from constant import STATUS_LEN
 def print_info(status: str, info: str | Dict[str, Any], args: argparse.Namespace):
     """
     Using to print the program message on terminal with format:
-    `Process-{proc_id}|[@param{status}]|[progress / total patient]|[patient id]|info, time:{start time}`
+    `Process-{proc_id}|[@param {status}]|[progress / total patient]|[patient id]|info, time:{start time}`
     Args:
         status: like Start, End, Error, Loading
         info: What info want to print
         args: must contain
-            <br>- proc_id
-            <br/>- patient_progress: like "current patient's index/# of patient"
-            |- pid: patient's id
+            <br>- proc_id: currently process's id
+            <br>- patient_progress: like "current patient's index/# of patient"
+            <br>- pid: patient's id
     """
-    _proc = f'Process-{args.proc_id:02}'
-    _status = f'{status:^{STATUS_LEN}}'
-    _p_prog = f'{args.patient_progress}'
-    t0 = dt.datetime.now()
+    _proc: str = f'Process-{args.proc_id:02}'
+    _status: str = f'{status:^{STATUS_LEN}}'
+    _p_prog: str = f'{args.patient_progress}'
+    t0: dt.datetime = dt.datetime.now()
 
+    # convert the dict structure data into normal string.
     if isinstance(info, dict):
         info_dict = info.copy()
         info: str = ''
         for key, value in info_dict.items():
             info = f'{info} {key}: {value},'
-    if len(info) < 1:
+    if len(info) < 1:   # No additional information for show
         print(f'{_proc}|[{_status}]|[{_p_prog}]|[{args.pid}]| time:{t0:%Y-%m-%d %H:%M:%S}')
     else:
         print(f'{_proc}|[{_status}]|[{_p_prog}]|[{args.pid}]| {info} time:{t0:%Y-%m-%d %H:%M:%S}')
@@ -37,9 +38,10 @@ def time2str(_time: dt.datetime | dt.time | dt.timedelta) -> str:
     return f'{_time:%Y-%m-%d %H:%M:%S}'
 
 
-def write_content(path, content: str | Dict[str, Any] | List[Any], cover: bool = True, as_json=False):
+def write_content(path, content: str | Dict[str, Any] | List[Any], cover: bool = True, as_json=False) -> None:
     """
-    :param path:
+    Store the content in disk.
+    :param path: fully path of the file, must include file extension like .json or .txt
     :param content: if write as .txt file, we change it to `List[str]` if is .json, can belong dict or list
     :param cover: decide used covered write or append write, `True` for 'w+' `False` for 'a+'.
     :param as_json: if `True` using `json.dump` to store, otherwise, using `IO.TextIOWrapper.write` to store
@@ -56,3 +58,4 @@ def write_content(path, content: str | Dict[str, Any] | List[Any], cover: bool =
                 content: List[str] = [content]
             for line in content:
                 ostream.write(f'{line}\n')
+    return None

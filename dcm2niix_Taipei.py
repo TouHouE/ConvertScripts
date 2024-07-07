@@ -225,14 +225,14 @@ def patient_proc(
     return pair_list, ct_error_list
 
 
-def start_proc(partition: models.Partition) -> list:
+def start_proc(partition: models.Partition) -> List[IspCtPair]:
     """
     Each process will start from this method
     Args:
         partition(models.Partition): include assign sub data sequence, process id and user arguments.
 
     Returns:
-
+        A list of IspCtPair ( that is a dict
     """
     proc_id: int = partition.PID
     pid_list: List[str] | np.ndarray | Iterable = partition.patient_list
@@ -242,15 +242,17 @@ def start_proc(partition: models.Partition) -> list:
     results = []
 
     for pidx, pid in enumerate(pid_list):
-        t0 = dt.datetime.now()
-        patient_progress = f'{pidx}/{n_pid}'
+        t0: dt.datetime = dt.datetime.now()
+        patient_progress: str = f'{pidx}/{n_pid}'
         setattr(args, 'patient_progress', patient_progress)
         setattr(args, 't0', t0)
         setattr(args, 'pid', pid)
         ComUtils.print_info('Start', '', args)
 
         try:
-            pid_result, raw_error_list = patient_proc(pid, args)
+            patient_pack: Tuple[List[IspCtPair], List[str]] = patient_proc(pid, args)
+            pid_result: List[IspCtPair] = WRAP_DATA(patient_pack)
+            raw_error_list: List[str] = WRAP_ERR(patient_pack)
             results.extend(pid_result)
             error_list_to_store: List[str] = [f'[{ComUtils.time2str(t0)}]|{err_file}' for err_file in raw_error_list]
 
@@ -258,15 +260,15 @@ def start_proc(partition: models.Partition) -> list:
 
             if len(error_list_to_store) > 0:    # If no error don't write down any error message.
                 ComUtils.write_content(rf'{args.err_dir}/{pid}.txt', error_list_to_store, cover=False, as_json=False)
-            suffix = 'Done'
+            end_status: str = 'Done'
         except Exception as e:
             error_content = [e.args, traceback.format_exc()]
             ComUtils.write_content(rf'{args.err_dir}/{pid}.txt', error_content, cover=False, as_json=False)
-            suffix = 'Error'
+            end_status: str = 'Error'
 
         tn = dt.datetime.now()
         ComUtils.print_info(
-            suffix, info=dict(cost=tn - t0), args=args
+            end_status, info=dict(cost=tn - t0), args=args
         )
 
     return results
