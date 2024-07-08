@@ -59,10 +59,10 @@ def build_isp_list(
         isp_root: str, pid: str, args: argparse.Namespace, output_dir: str = './mask'
 ) -> list[models.taipei.TaipeiISPHandler]:
     isp_list: List[models.taipei.TaipeiISPHandler] = []
-
+    # breakpoint()
     for root, dirs, files in os.walk(f'{isp_root}/{pid}', topdown=True):
         # The ISP file name format only end with .dcm
-        legal_isp_list: List[str] = CUtils.filter_legal_dcm([f'{root}/{name}' for name in files])
+        legal_isp_list: List[str] = CUtils.filter_legal_dcm([f'{root}/{name}' for name in files], is_ct=False)
         if len(legal_isp_list) < 1 or len(dirs) > 0:
             continue
 
@@ -131,7 +131,7 @@ def build_ct_isp_pair(
         isp: models.taipei.TaipeiISPHandler
 ) -> List[IspCtPair]:
     sub_pair: List[IspCtPair] = list()
-
+    # The `confusion_ct maybe a Deduplicator or a CTHandler, I suppose deduplicate and match to isp in same for loop.
     for idx, confusion_ct in enumerate(ct_list):
         if confusion_ct != isp:
             continue
@@ -145,7 +145,7 @@ def build_ct_isp_pair(
             ct_list[idx] = final_ct     # Replace the deduplicator with only ct(`models.taipei.TaipeiCTHandler`)
         else:
             final_ct = confusion_ct
-
+        # Store the mask into disk.
         isp.store_mask(final_ct)
         pair: IspCtPair = IspCtPair({
             'image': final_ct.get_store_path(),
@@ -189,7 +189,7 @@ def patient_proc(
     # Loading Done.
     # Show some information.
     info = f'len ct: {len(ct_list)}, len isp: {len(isp_list)}'
-    ComUtils.print_info('Load CT&ISP', info, args)
+    ComUtils.print_info('Loaded CT&ISP', info, args)
     # Show information done.
 
     pair_list: List[IspCtPair] = list()
@@ -202,6 +202,7 @@ def patient_proc(
 
         if isp not in ct_list:  # The isp cannot match any CT
             offal_isp.append(isp)
+            remain_isp = len(isp_list)
             continue
         # The isp maybe can match to multiple CT
         sub_pair_list: List[IspCtPair] = build_ct_isp_pair(ct_list, isp)
@@ -315,24 +316,40 @@ def initial_legal_pair(ignore_list: list[str], args: argparse.Namespace) -> list
 
 
 def main(args: argparse.Namespace):
+    if getattr(args, 'patient_folder', None) is not None:
+        org_nw = args.num_workers
+        org_wr = args.worker_ratio
+        args.num_workers = 1
+        args.worker_ratio = None
+        print(f'Using patient_folder mode, re-setting:\n num_workers: {org_nw} -> 1\n worker_ratio: {org_wr} -> None ')
+
     if (w_ratio := args.worker_ratio) is None:
         nproc: int = args.num_workers
     else:
         nproc: int = mp.cpu_count() // w_ratio
+
     setattr(args, 'nproc', nproc)
     print(f'# of workers: {nproc}')
     sample_pair = dict(name=DIGIT2LABEL_NAME, data=[])
-    ignore_list: list[PatientId] = initial_ignore_list(args)
-    legal_file_patient = initial_legal_pair(ignore_list, args)
-    print(f'The number of patients waiting to be processed: {len(legal_file_patient)}')
+    if (patient_folder := getattr(args, 'patient_folder', None)) is None:
+        ignore_list: list[PatientId] = initial_ignore_list(args)
+        legal_file_patient: List[str] = initial_legal_pair(ignore_list, args)
+        # TODO: This line only for debugging.
+        # legal_file_patient = np.random.choice(legal_file_patient, size=100, replace=False)
+        print(f'The number of patients waiting to be processed: {len(legal_file_patient)}')
+    else:
+        legal_file_patient: List[str] = [patient_folder]
+
     sub_world = np.array_split(legal_file_patient, nproc)
     sub_world = [models.Partition(proc_id=i, data=sworld, args=args) for i, sworld in enumerate(sub_world)]
+    if nproc == 1:  # Only 1 thread, The Pool object is useless
+        sample_pair['data'].extend(start_proc(sub_world[0]))
+    else:
+        with mp.Pool(processes=nproc) as pool:
+            all_results = pool.map(start_proc, sub_world)
+            for proc_result in all_results:
+                sample_pair['data'].extend(proc_result)
 
-    with mp.Pool(processes=nproc) as pool:
-        all_results = pool.map(start_proc, sub_world)
-        for proc_result in all_results:
-            sample_pair['data'].extend(proc_result)
-        # sample_pair['data'].extend(pool.map(start_proc, sub_world))
     ComUtils.write_content(rf'{args.meta_dir}/sample.json', sample_pair, as_json=True)
 
 
@@ -347,6 +364,7 @@ def mask_sure_folder_exist(args: argparse.Namespace):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--data_root', type=str)
+    parser.add_argument('--patient_folder', type=str, required=False, help='single patient folder this is exclusive with `--data_root`')
     parser.add_argument('--isp_root', type=str)
     parser.add_argument('--large_ct', action='store_true', default=False)
     parser.add_argument('--num_workers', type=int, default=1)

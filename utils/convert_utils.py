@@ -16,6 +16,9 @@ from utils.data_typing import CardiacPhase, PatientId
 
 
 def _confirm_str(var) -> str:
+    if var is None:
+        return ''
+
     if isinstance(var, bytes) or isinstance(var, bytearray):
         return var.decode('ISO_IR 100', 'strict')
     if isinstance(var, int) or isinstance(var, float):
@@ -54,7 +57,30 @@ def fix_copy(src_pack: tuple[pyd.FileDataset, str], dst: str) -> None:
 
 
 def get_cp(dcm: pyd.FileDataset) -> CardiacPhase:
-    for tag_candidate in [(0x0020, 0x9241), (0x01f1, 0x1041), (0x7005, 0x1004), (0x7005, 0x1005)]:
+    """
+    Get cardiac from those candidate.
+        0x0020, 0x9241: NominalPercentageOfCardiacPhase
+        0x01f1, 0x1041: LSCINTCT_GATING_DELAY
+        0x7005, 0x1004: Toshiba/Canon Cardiac Reconstruction Gating Phase in Percent SH
+        0x7005, 0x1005: Cardiac Reconstruction Gating Phase in ms SH 1
+    Args:
+        dcm:
+
+    Returns:
+
+    """
+    if (_buf := dcm.get((0x0008, 0x0070))) is None:
+        device_factory: str = ''
+    else:
+        device_factory = _confirm_str(_buf.value)
+    candidate_list: List[Tuple[int, int]] = [(0x0020, 0x9241)]
+
+    if device_factory in ['toshiba', 'canon']:
+        candidate_list.extend([(0x7005, 0x1004), (0x7005, 0x1005), (0x01f1, 0x1041)])
+    else:
+        candidate_list.extend([(0x01f1, 0x1041), (0x7005, 0x1004), (0x7005, 0x1005)])
+
+    for tag_candidate in candidate_list:
         cp = dcm.get(tag_candidate)
         if cp is None:
             continue
@@ -65,9 +91,16 @@ def get_cp(dcm: pyd.FileDataset) -> CardiacPhase:
 
         if all(_part.isdigit() for _part in cp.split('.')):
             return float(cp)
+        cp = re.sub('[^0-9\.]', '', cp)
+        cp_pack = cp.split('.')
+        cp0_len = len(cp_pack[0])
 
-        if not cp[-1].isdigit():
-            return float(cp[:-1])
+        if cp0_len > 2:
+            continue
+        return float(cp)
+
+
+
 
     return .0
 
@@ -127,7 +160,11 @@ def make_path(df: pd.DataFrame):
     return f'{pid}/{snum}/{uid}/{cp}'
 
 
-def legal_dcm_path(path: str) -> bool:
+def legal_isp_dicom_path(path: str) -> bool:
+    return path.endswith('.dcm')
+
+
+def legal_ct_dicom_path(path: str) -> bool:
     """
     Check if a path is legal, if got <instance number>[<number>].dcm mean duplication file.
     the file extension must .dcm.
@@ -141,7 +178,7 @@ def legal_dcm_path(path: str) -> bool:
     return is_dcm and not_dup
 
 
-def legal_patient_folder(path: str | List[str, PatientId], ignore_condition: Optional[List[PatientId]] = None) -> bool:
+def legal_patient_folder(path: str | List[Union[str, PatientId]], ignore_condition: Optional[List[PatientId]] = None) -> bool:
     if isinstance(path, str):
         patient_name: str = re.split('[/\\\]', path)[-1]
     else:
@@ -218,11 +255,13 @@ def filter_legal_patient_folder(
     return legal_patient_list
 
 
-def filter_legal_dcm(dcm_list: List[str]) -> List[str]:
+def filter_legal_dcm(dcm_list: List[str], is_ct=True) -> List[str]:
     legal_dcm: List[str] = list()
+    judge_func: Callable = legal_ct_dicom_path if is_ct else legal_isp_dicom_path
 
     for name in dcm_list:
-        if legal_dcm_path(name):
+
+        if judge_func(name):
             legal_dcm.append(name)
     return legal_dcm
 

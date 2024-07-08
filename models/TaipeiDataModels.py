@@ -374,7 +374,7 @@ class TaipeiCTDeduplicator(object):
         return self.candidate[larger_idx]
 
     def __call__(self, isp: 'TaipeiISPHandler'):
-        final_ct: 'TaipeiCTHandler'
+        final_ct: 'TaipeiCTHandler' | None = None
 
         if isp is None:
             return self._largest_ct()
