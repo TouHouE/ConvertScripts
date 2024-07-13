@@ -29,7 +29,7 @@ class DicomCollector:
         dcm = pyd.dcmread(self.path)
         self.disk_size = os.stat(dcm_path).st_size
         self.size_unit = size_unit
-        self.cp = CUtils.get_cp(dcm)
+        self.cp = CUtils.find_cp(dcm)
         status, self.uid = CUtils.get_tag(dcm, (0x0020, 0x000e))
         status, self.stime = CUtils.get_tag(dcm, (0x0008, 0x0030))
         status, self.snum = CUtils.get_tag(dcm, (0x0020, 0x0011), None)
