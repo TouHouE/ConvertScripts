@@ -34,7 +34,7 @@ def collect_ct_info(legal_dcm: List[str]) -> Dict[str, Dict[CardiacPhase, Any]]:
     # Do single folder at there.
     # Loading all of dcm file under current folder.
     for dcm, dcm_path in zip(list(map(partial(pyd.dcmread, force=True), legal_dcm)), legal_dcm):
-        cp: float | int = CUtils.get_cp(dcm)
+        cp: float | int = CUtils.find_cp(dcm)
         _, uid = CUtils.get_tag(dcm, (0x0020, 0x000e))
         _, stime = CUtils.get_tag(dcm, (0x0008, 0x0030))
         _, snum = CUtils.get_tag(dcm, (0x0020, 0x0011), None)
@@ -330,7 +330,7 @@ def main(args: argparse.Namespace):
 
     setattr(args, 'nproc', nproc)
     print(f'# of workers: {nproc}')
-    sample_pair = dict(name=DIGIT2LABEL_NAME, data=[])
+    sample_pair = dict(name=DIGIT2LABEL_NAME, data=[])  # Initial the final store table
     if (patient_folder := getattr(args, 'patient_folder', None)) is None:
         ignore_list: list[PatientId] = initial_ignore_list(args)
         legal_file_patient: List[str] = initial_legal_pair(ignore_list, args)
@@ -349,8 +349,12 @@ def main(args: argparse.Namespace):
             all_results = pool.map(start_proc, sub_world)
             for proc_result in all_results:
                 sample_pair['data'].extend(proc_result)
+    ComUtils.write_content(rf'{args.meta_dir}/raw_sample.json', sample_pair, as_json=True)
 
-    ComUtils.write_content(rf'{args.meta_dir}/sample.json', sample_pair, as_json=True)
+    if all(needed_attr is not None for needed_attr in [getattr(args, 'test_ratio'), getattr(args, 'num_fold')]):
+        develop_model_table = ComUtils.make_vista_style_table(sample_pair.copy())
+        ComUtils.write_content(rf'{args.meta_dir}/vista_table.json', develop_model_table, as_json=True)
+    return
 
 
 def mask_sure_folder_exist(args: argparse.Namespace):
@@ -377,7 +381,9 @@ if __name__ == '__main__':
     parser.add_argument('--err_dir', type=str, default='./NiiTaipei/err')
     parser.add_argument('--dst_root', type=str, default='./NiiTaipei')
     parser.add_argument('--dcm2niix', type=str, default='./lib/dcm2niix.exe')
+    parser.add_argument('--test_ratio', type=float, required=False)
+    parser.add_argument('--num_fold', type=int, required=False)
     parser.add_argument('--verbose', type=int, default=0)
-    args = parser.parse_args()
-    mask_sure_folder_exist(args)
-    main(args)
+    global_args = parser.parse_args()
+    mask_sure_folder_exist(global_args)
+    main(global_args)
