@@ -1,8 +1,30 @@
+import re
 import json
 import argparse
 import datetime as dt
-from typing import Dict, List, Any
+from typing import Dict, List, Any, Callable
 from constant import STATUS_LEN
+
+
+import numpy as np
+from sklearn.model_selection import train_test_split, KFold
+
+__all__ = ['is_numerical', 'time2str', 'print_info', 'write_content', 'make_vista_style_table']
+
+
+def is_numerical(foo: str):
+    foo = foo.split('(')[0]
+    pack = foo.split('.')
+    if len(pack) > 2:
+        return False
+
+    if len(pack) == 2:
+        return re.fullmatch('^[0-9]{1,}\.[0-9]{1,}[%]{0,1}$', foo)
+    return re.fullmatch('^[0-9]{1,}[%]{0,1}$', foo) is not None
+
+
+def time2str(_time: dt.datetime | dt.time | dt.timedelta) -> str:
+    return f'{_time:%Y-%m-%d %H:%M:%S}'
 
 
 def print_info(status: str, info: str | Dict[str, Any], args: argparse.Namespace):
@@ -28,14 +50,10 @@ def print_info(status: str, info: str | Dict[str, Any], args: argparse.Namespace
         info: str = ''
         for key, value in info_dict.items():
             info = f'{info} {key}: {value},'
-    if len(info) < 1:   # No additional information for show
+    if len(info) < 1:  # No additional information for show
         print(f'{_proc}|[{_status}]|[{_p_prog}]|[{args.pid}]| time:{t0:%Y-%m-%d %H:%M:%S}')
     else:
         print(f'{_proc}|[{_status}]|[{_p_prog}]|[{args.pid}]| {info} time:{t0:%Y-%m-%d %H:%M:%S}')
-
-
-def time2str(_time: dt.datetime | dt.time | dt.timedelta) -> str:
-    return f'{_time:%Y-%m-%d %H:%M:%S}'
 
 
 def write_content(path, content: str | Dict[str, Any] | List[Any], cover: bool = True, as_json=False) -> None:
@@ -59,3 +77,31 @@ def write_content(path, content: str | Dict[str, Any] | List[Any], cover: bool =
             for line in content:
                 ostream.write(f'{line}\n')
     return None
+
+
+def make_vista_style_table(raw_table, args):
+    def _test_pack_mapper(test_pack):
+        test_pack['label'] = test_pack['mask']
+        return test_pack
+    num_fold: int = 2 if (num_fold := args.num_fold) <= 2 else num_fold
+    test_ratio: float = test_ratio if 0 <= (test_ratio := args.test_ratio) < 1 else test_ratio / len(raw_table['data'])
+
+    ids_list = np.arange(len(raw_table['data']))
+    train_ids_list, test_ids_list = train_test_split(ids_list, test_ratio)
+    folder = KFold(num_fold, shuffle=True, random_state=114514)
+    test_list = [_test_pack_mapper(raw_table['data'][test_index]) for test_index in test_ids_list]
+    train_list = list()
+    append_train: Callable = train_list.append
+
+    for current_fold, (_, val_index) in enumerate(folder.split(train_ids_list)):
+        train_pack = raw_table['data'][val_index]
+        train_pack['fold'] = current_fold
+        train_pack['label'] = train_pack['mask']
+        append_train(train_pack)
+    vista_table = dict(label=raw_table['name'], training=train_list, testing=test_list)
+    return vista_table
+
+
+
+
+
