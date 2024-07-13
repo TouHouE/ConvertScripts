@@ -12,25 +12,11 @@ import nibabel as nib
 import isp_helper as ISPH
 from utils import convert_utils as CUtils
 from utils.data_typing import CardiacPhase, FilePathPack
+from constant import LABEL_NAME2DIGIT
 
 __all__ = [
     'TaipeiCTDeduplicator', 'TaipeiCTHandler', 'TaipeiISPHandler'
 ]
-
-
-DIGIT2LABEL_NAME = {
-    1: 'RightAtrium',
-    2: 'RightVentricle',
-    3: 'LeftAtrium',
-    4: 'LeftVentricle',
-    5: 'MyocardiumLV',
-    6: 'Aorta',
-    7: 'Coronaries8',
-    8: 'Fat',
-    9: 'Bypass',
-    10: 'Plaque'
-}
-LABEL_NAME2DIGIT = {value: key for key, value in DIGIT2LABEL_NAME.items()}
 
 
 class TaipeiISPHandler(object):
@@ -69,7 +55,7 @@ class TaipeiISPHandler(object):
         self.final_path = dict()
         self.is_saved = False
         isp, uni_uid = self._init_tissu_and_plaque_list()
-        desc: str = CUtils.get_desc(isp)
+        desc: str = CUtils.find_desc(isp)
         self.comment = desc
 
         cp, snum = self._analysis_comment(desc)
@@ -181,10 +167,10 @@ class TaipeiISPHandler(object):
         self.is_saved = True
 
     def get_store_path(self):
-        _final_path = self.final_path.copy()
-        for key, value in _final_path.items():
-            _final_path[key] = value.replace(self.args.dst_root, '')
-        return _final_path
+        _nii_storage_path = self.final_path.copy()
+        for key, value in _nii_storage_path.items():
+            _nii_storage_path[key] = value.replace(self.args.dst_root, '')
+        return _nii_storage_path
 
     def __repr__(self):
         ctxt = f'{"=" * 30}\n'
