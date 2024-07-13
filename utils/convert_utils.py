@@ -26,20 +26,6 @@ def _confirm_str(var) -> str:
     return var
 
 
-def find_isp_uid(isp: pyd.FileDataset) -> str:
-    def _make_sure_is_str(_str):
-        if isinstance(_str, str):
-            return _str
-        else:
-            return _str.decode('ISO_IR 100', 'strict')
-
-    uid_pack = isp.get((0x0008, 0x1115))
-    if uid_pack is None:
-        return _make_sure_is_str(isp.get((0x01e1, 0x1046)).value).split('_')[-3]
-
-    return _make_sure_is_str(uid_pack.value[0][(0x0020, 0x000e)].value)
-
-
 def shutil_copy(src_pack: tuple[pyd.FileDataset, str], dst: str) -> None:
     shutil.copy(src_pack[1], dst)
 
@@ -56,7 +42,21 @@ def fix_copy(src_pack: tuple[pyd.FileDataset, str], dst: str) -> None:
     dcm.save_as(dst)
 
 
-def get_cp(dcm: pyd.FileDataset) -> CardiacPhase:
+def find_isp_uid(isp: pyd.FileDataset) -> str:
+    def _make_sure_is_str(_str):
+        if isinstance(_str, str):
+            return _str
+        else:
+            return _str.decode('ISO_IR 100', 'strict')
+
+    uid_pack = isp.get((0x0008, 0x1115))
+    if uid_pack is None:
+        return _make_sure_is_str(isp.get((0x01e1, 0x1046)).value).split('_')[-3]
+
+    return _make_sure_is_str(uid_pack.value[0][(0x0020, 0x000e)].value)
+
+
+def find_cp(dcm: pyd.FileDataset) -> CardiacPhase:
     """
     Get cardiac from those candidate.
         0x0020, 0x9241: NominalPercentageOfCardiacPhase
@@ -105,16 +105,7 @@ def get_cp(dcm: pyd.FileDataset) -> CardiacPhase:
     return .0
 
 
-def get_tag(
-        dcm: pyd.FileDataset, tag: Tuple[int, int],
-        default_value: Any = None, need_state: bool = True
-) -> tuple[str, Any | None] | Union[Any, None]:
-    if (info := dcm.get(tag)) is not None:
-        return 'Normal', info.value if need_state else info.value
-    return 'Unreadable', default_value if need_state else default_value
-
-
-def get_desc(dcm: pyd.FileDataset) -> str:
+def find_desc(dcm: pyd.FileDataset) -> str:
     """
         Trying to get the description from an ISP Dicom file, the possible tag are (0x0008, 0x1032) and (0x0008, 0x103e)
     :param dcm: Single ISP dicom file
@@ -128,11 +119,22 @@ def get_desc(dcm: pyd.FileDataset) -> str:
     return ''
 
 
+def get_tag(
+        dcm: pyd.FileDataset, tag: Tuple[int, int],
+        default_value: Any = None, need_state: bool = True
+) -> tuple[str, Any | None] | Union[Any, None]:
+    if (info := dcm.get(tag)) is not None:
+        return 'Normal', info.value if need_state else info.value
+    return 'Unreadable', default_value if need_state else default_value
+
+
 def get_init_prepare_df(dcm_collector) -> Dict[str, Any]:
     _prepare_df = dict()
     for key in dcm_collector.__dict__():
         _prepare_df[key] = []
     return _prepare_df
+
+
 def commandline(ct_output_path: str, buf_path: str, verbose: int = 0, dcm2niix_path: str = './lib/dcm2niix.exe'):
     if verbose == 1:
         kwargs = dict()
@@ -222,6 +224,16 @@ def unzip(args, folder, member) -> str | List[str]:
 
 
 def record_offal_sample(offal_isp, offal_ct, args):
+    """
+    Store all offal data under corresponding patient's folder with json format
+    Args:
+        offal_isp(List[str]): All unmatched isp finding path (The source path)
+        offal_ct(List[str]): All unmatched ct series path (The .nii.gz storage path)
+        args:
+
+    Returns:
+        None
+    """
     unpair_path = rf'{args.meta_dir}/unpair/{args.pid}'
     os.makedirs(unpair_path, exist_ok=True)
     unpair_obj = dict(isp=[], ct=[])
