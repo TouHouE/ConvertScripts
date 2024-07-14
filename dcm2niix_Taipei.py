@@ -316,11 +316,13 @@ def initial_legal_pair(ignore_list: list[str], args: argparse.Namespace) -> list
 
 
 def main(args: argparse.Namespace):
-    if getattr(args, 'patient_folder', None) is not None:
+    if (pf := getattr(args, 'patient_folder', None)) is not None:
         org_nw = args.num_workers
         org_wr = args.worker_ratio
         args.num_workers = 1
         args.worker_ratio = None
+
+
         print(f'Using patient_folder mode, re-setting:\n num_workers: {org_nw} -> 1\n worker_ratio: {org_wr} -> None ')
 
     if (w_ratio := args.worker_ratio) is None:
@@ -338,7 +340,10 @@ def main(args: argparse.Namespace):
         # legal_file_patient = np.random.choice(legal_file_patient, size=100, replace=False)
         print(f'The number of patients waiting to be processed: {len(legal_file_patient)}')
     else:
-        legal_file_patient: List[str] = [patient_folder]
+        patient_id = re.split(r'[/\\]', patient_folder)[-1]
+        data_root = patient_id[:-len(patient_id)]
+        legal_file_patient: List[str] = [patient_id]
+        args.data_root = data_root
 
     sub_world = np.array_split(legal_file_patient, nproc)
     sub_world = [models.Partition(proc_id=i, data=sworld, args=args) for i, sworld in enumerate(sub_world)]
