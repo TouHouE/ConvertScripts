@@ -1,3 +1,4 @@
+import json
 import argparse
 import multiprocessing as mp
 from dataclasses import dataclass, field
@@ -8,7 +9,7 @@ import numpy as np
 from utils import convert_utils as CUtils
 
 __all__ = [
-    'Partition', 'IspCtPair'
+    'Partition', 'IspCtPair', 'DebugCard'
 ]
 @dataclass
 class Partition:
@@ -42,3 +43,15 @@ class IspCtPair:
     pid: str
     uid: str
     mask: str
+
+
+class DebugCard:
+    debug_attr_name: list
+
+    @property
+    def debug_card(self):
+        card = {key: getattr(self, key, None) for key in self.debug_attr_name}
+        return f'{json.dumps(card, indent=4)}'
+
+
+

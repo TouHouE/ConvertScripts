@@ -42,6 +42,16 @@ def fix_copy(src_pack: tuple[pyd.FileDataset, str], dst: str) -> None:
     dcm.save_as(dst)
 
 
+def find_dicom_shape(dicom_container: List[pyd.FileDataset] | pyd.FileDataset) -> Tuple[int, int]:
+    if not isinstance(dicom_container, list):
+        dicom_container = [dicom_container]
+    for dicom in dicom_container:
+        image = getattr(dicom, 'pixel_array', None)
+        if image is None:
+            continue
+
+
+
 def find_isp_uid(isp: pyd.FileDataset) -> str:
     def _make_sure_is_str(_str):
         if isinstance(_str, str):
@@ -98,10 +108,6 @@ def find_cp(dcm: pyd.FileDataset) -> CardiacPhase:
         if cp0_len > 2:
             continue
         return float(cp)
-
-
-
-
     return .0
 
 

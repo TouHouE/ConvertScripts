@@ -10,16 +10,18 @@ import pydicom as pyd
 import nibabel as nib
 
 import isp_helper as ISPH
-from utils import convert_utils as CUtils
-from utils.data_typing import CardiacPhase, FilePathPack
 from constant import LABEL_NAME2DIGIT
+from utils import convert_utils as CUtils
+from utils.hooker import obj_hooker
+from utils.data_typing import CardiacPhase, FilePathPack
+from models.CommonDataModels import DebugCard
 
 __all__ = [
     'TaipeiCTDeduplicator', 'TaipeiCTHandler', 'TaipeiISPHandler'
 ]
 
 
-class TaipeiISPHandler(object):
+class TaipeiISPHandler(object, DebugCard):
     shape: tuple[int, int, int] | list[int, int, int]
     final_path: dict[str, str]
     plaque_num: int
@@ -48,6 +50,7 @@ class TaipeiISPHandler(object):
         self.pid: str = pid
         self.verbose: int = verbose
         self.args = args
+        self.debug_attr_name = ['output_dir', 'total_list', 'folder_name', 'pid']
 
         self.tissue_list = []
         self.path_list = []
@@ -67,6 +70,7 @@ class TaipeiISPHandler(object):
             print(uni_uid)
         self.uid = uni_uid.pop()
 
+    @obj_hooker
     def _analysis_comment(self, desc) -> tuple[CardiacPhase, int]:
         cp = 0
         snum = 0
@@ -188,7 +192,8 @@ class TaipeiISPHandler(object):
         return ctxt
 
 
-class TaipeiCTHandler(object):
+class TaipeiCTHandler(object, DebugCard):
+    @obj_hooker
     def __init__(
             self,
             dicom_list: list[tuple[pyd.FileDataset, str]],
@@ -224,6 +229,7 @@ class TaipeiCTHandler(object):
         self.ct_output_path: str = f'{output_dir}/{pid}/{snum}/{uid}/{cp}/cand_0'
         self.nii_gz_file_name: str
         self.args = args
+        self.debug_attr_name = ['pid', 'snum', 'uid', 'cp', 'buf_dir', 'buf_path', 'ct_output_path', 'fix_tag0008_0030']
 
         # Store all candidate.
         # The function of remove duplicate dicom file is implement at DedupDCM
@@ -318,6 +324,14 @@ class TaipeiCTHandler(object):
         ctxt = f'{ctxt}Final Path   :{self.final_path}\n'
         return ctxt
 
+    @property
+    def debug_card(self):
+        ctxt = ''
+        ctxt = f'{ctxt}Patient ID   :{self.pid}\n'
+        ctxt = f'{ctxt}Series Num   :{self.snum}\n'
+        ctxt = f'{ctxt}UID          :{self.uid}\n'
+        ctxt = f'{ctxt}Cardiac Phase:{self.cp:4}\n'
+        return ctxt
 
 class TaipeiCTDeduplicator(object):
     uid: str
