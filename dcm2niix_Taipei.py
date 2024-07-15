@@ -25,15 +25,21 @@ WRAP_ERR: itemgetter = itemgetter(1)
 WRAP_DATA: itemgetter = itemgetter(0)
 
 
-def collect_ct_info(legal_dcm: List[str]) -> Dict[str, Dict[CardiacPhase, Any]]:
+def collect_ct_info(legal_dcm: List[str]) -> Tuple[Dict[str, Dict[CardiacPhase, Any]], List[str]]:
     cp2uid_map: dict[CardiacPhase, list[str]] = dict()
     cp2dcm_map: dict[CardiacPhase, list[tuple[pyd.FileDataset, str]]] = dict()
     cp2time_map: dict[CardiacPhase, list[str]] = dict()
     cp2snum_map: dict[CardiacPhase, int] = dict()
-
+    error_file_list: List[str] = list()
     # Do single folder at there.
     # Loading all of dcm file under current folder.
-    for dcm, dcm_path in zip(list(map(partial(pyd.dcmread, force=True), legal_dcm)), legal_dcm):
+    for dcm_path in legal_dcm:
+        try:
+            dcm = pyd.dcmread(dcm_path)
+        except Exception as e:
+            error_file_list.append(dcm_path)
+            continue
+
         cp: float | int = CUtils.find_cp(dcm)
         _, uid = CUtils.get_tag(dcm, (0x0020, 0x000e))
         _, stime = CUtils.get_tag(dcm, (0x0008, 0x0030))
@@ -52,7 +58,7 @@ def collect_ct_info(legal_dcm: List[str]) -> Dict[str, Dict[CardiacPhase, Any]]:
         'dcm': cp2dcm_map,
         'time': cp2time_map,
         'snum': cp2snum_map
-    }
+    }, error_file_list
 
 
 def build_isp_list(
@@ -67,7 +73,14 @@ def build_isp_list(
             continue
 
         folder_name = re.split('[/\\\]', root)[-1]
-        isp_list.append(models.taipei.TaipeiISPHandler(legal_isp_list, pid, folder_name, output_dir, args=args))
+        isp = models.taipei.TaipeiFactory.create_isp(legal_isp_list, pid, folder_name, output_dir, args=args)
+        if isp is None:
+            info = {
+                "folder": folder_name
+            }
+            ComUtils.print_info("Skip ISP", info, args=args)
+            continue
+        isp_list.append(isp)
     return isp_list
 
 
@@ -87,15 +100,18 @@ def build_ct_list(
     """
     pid_ct_list: List[models.taipei.TaipeiCTDeduplicator] = []
     error_ct_list: List[str] = []
-
-    for root, dirs, files in os.walk(f'{ct_root}/{pid}', topdown=True):
+    for root, dirs, files in os.walk(os.path.join(ct_root, pid), topdown=True):
         legal_dcm = CUtils.filter_legal_dcm([f'{root}/{name}' for name in files])
-        if len(legal_dcm) < 10 or len(dirs) > 0:
+        if len(dirs) > 0:
             continue
-
+        elif len(legal_dcm) < 30:
+            ComUtils.print_info('Skip CT', info=dict(n_dcm=len(legal_dcm)), args=args)
+            continue
+        # print(len(legal_dcm))
         # Do single folder at there.
         # Loading all of dcm file under current folder.
-        total_cpmap = collect_ct_info(legal_dcm)
+        total_cpmap, error_dicom_list = collect_ct_info(legal_dcm)
+        error_ct_list.extend(error_dicom_list)
         # Depack here
         cp2uid_map: dict[CardiacPhase, list[str]] = total_cpmap['uid']
         cp2dcm_map: dict[CardiacPhase, list[tuple[pyd.FileDataset, str]]] = total_cpmap['dcm']
@@ -106,13 +122,18 @@ def build_ct_list(
         # Declare the models.taipei.TaipeiCTHandler object into models.taipei.TaipeiCTDeduplicator
         for cardiac_phase in cp2dcm_map:
             corresponding_dcm: list[tuple[pyd.FileDataset, str]] = cp2dcm_map[cardiac_phase]
+            # if len(corresponding_dcm) < 30:
+            #     ComUtils.print_info('Skip in cp', {"# of dcm": len(corresponding_dcm), 'cp': cardiac_phase}, args=args)
+            #     continue
             uid: str = set(cp2uid_map[cardiac_phase]).pop()
             fix_stime: bool = len(set(cp2time_map[cardiac_phase])) > 1
+
 
             buffer_ct = models.taipei.TaipeiCTHandler(
                 corresponding_dcm, pid, uid, args=args, cp=cardiac_phase, snum=cp2snum_map[cardiac_phase],
                 fix_tag0008_0030=fix_stime, output_dir=output_dir, buf_dir=buf_dir, verbose=args.verbose
             )
+
             # To deduplicate CT series,
             # we collect all CT series with the same attributes into 'TaipeiCTDeduplicator'
             if buffer_ct in pid_ct_list:
@@ -121,6 +142,7 @@ def build_ct_list(
             else:
                 # To handle potential duplicate series,
                 # we store a new `TaipeiCTDeduplicator` instead of raw ct series.
+
                 pid_ct_list.append(models.taipei.TaipeiCTDeduplicator(buffer_ct))
 
     return pid_ct_list, error_ct_list
@@ -321,8 +343,6 @@ def main(args: argparse.Namespace):
         org_wr = args.worker_ratio
         args.num_workers = 1
         args.worker_ratio = None
-
-
         print(f'Using patient_folder mode, re-setting:\n num_workers: {org_nw} -> 1\n worker_ratio: {org_wr} -> None ')
 
     if (w_ratio := args.worker_ratio) is None:
@@ -341,7 +361,8 @@ def main(args: argparse.Namespace):
         print(f'The number of patients waiting to be processed: {len(legal_file_patient)}')
     else:
         patient_id = re.split(r'[/\\]', patient_folder)[-1]
-        data_root = patient_id[:-len(patient_id)]
+        data_root = patient_folder[:-len(patient_id)]
+
         legal_file_patient: List[str] = [patient_id]
         args.data_root = data_root
 
