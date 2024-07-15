@@ -48,7 +48,6 @@ class IspCtPair:
 class DebugCard:
     debug_attr_name: list
 
-    @property
     def debug_card(self):
         card = {key: getattr(self, key, None) for key in self.debug_attr_name}
         return f'{json.dumps(card, indent=4)}'
