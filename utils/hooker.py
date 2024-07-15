@@ -11,6 +11,7 @@ def obj_hooker(func: Callable):
     def _wrapper(obj, *args, **kwargs):
         try:
             _result = func(obj, *args, **kwargs)
+            return _result
         except Exception as e:
             except_info = str(e)
             debug_info = obj.debug_card()
