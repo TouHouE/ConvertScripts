@@ -13,7 +13,7 @@ import pandas as pd
 import pydicom as pyd
 
 from utils.data_typing import CardiacPhase, PatientId
-
+from utils import common_utils as ComUtils
 
 def _confirm_str(var) -> str:
     if var is None:
@@ -249,6 +249,11 @@ def record_offal_sample(offal_isp, offal_ct, args):
         # Here is old method.
         # unpair_obj['ct'].append(o_ct.final_path)
         unpair_obj['ct'].append(o_ct.get_store_path())
+    info = {
+        'Offal CT': len(unpair_obj['ct']),
+        'Offal ISP': len(unpair_obj['isp'])
+    }
+    ComUtils.print_info('Offal CT&ISP', info, args=args)
     with open(f'{unpair_path}/unpair.json', 'w+') as jout:
         json.dump(unpair_obj, jout)
 
