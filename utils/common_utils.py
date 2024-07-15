@@ -68,7 +68,7 @@ def write_content(path, content: str | Dict[str, Any] | List[Any], cover: bool =
     """
     open_mode = 'w+' if cover else 'a+'
 
-    with open(path, open_mode) as ostream:
+    with open(path, open_mode, encoding='utf-8') as ostream:
         if as_json:
             json.dump(content, ostream)
         else:
