@@ -17,11 +17,11 @@ from utils.data_typing import CardiacPhase, FilePathPack
 from models.CommonDataModels import DebugCard
 
 __all__ = [
-    'TaipeiCTDeduplicator', 'TaipeiCTHandler', 'TaipeiISPHandler'
+    'TaipeiCTDeduplicator', 'TaipeiCTHandler', 'TaipeiISPHandler', "TaipeiFactory"
 ]
 
 
-class TaipeiISPHandler(object, DebugCard):
+class TaipeiISPHandler(DebugCard):
     shape: tuple[int, int, int] | list[int, int, int]
     final_path: dict[str, str]
     plaque_num: int
@@ -29,6 +29,7 @@ class TaipeiISPHandler(object, DebugCard):
     path_list: list[pyd.FileDataset]
     is_saved: bool
 
+    @obj_hooker
     def __init__(
             self, isp_list: list[str], pid: str,
             folder_name: str, output_dir: str = './mask',
@@ -48,9 +49,9 @@ class TaipeiISPHandler(object, DebugCard):
         self.total_list: list[str] = isp_list
         self.folder_name: str = folder_name
         self.pid: str = pid
-        self.verbose: int = verbose
+        self.verbose: int = args.verbose
         self.args = args
-        self.debug_attr_name = ['output_dir', 'total_list', 'folder_name', 'pid']
+        self.debug_attr_name = ['output_dir', 'total_list', 'folder_name', 'pid', 'desc', 'cp', 'snum', 'uid']
 
         self.tissue_list = []
         self.path_list = []
@@ -58,6 +59,7 @@ class TaipeiISPHandler(object, DebugCard):
         self.final_path = dict()
         self.is_saved = False
         isp, uni_uid = self._init_tissu_and_plaque_list()
+        assert len(self.tissue_list) > 0, 'No tissue list'
         desc: str = CUtils.find_desc(isp)
         self.comment = desc
 
@@ -143,6 +145,7 @@ class TaipeiISPHandler(object, DebugCard):
                 union_plaque[pmask != 0] = 1
         return union_mask, union_plaque
 
+    @obj_hooker
     def store_mask(self, ct: 'TaipeiCTHandler'):
         if self.is_saved:
             return
@@ -192,7 +195,7 @@ class TaipeiISPHandler(object, DebugCard):
         return ctxt
 
 
-class TaipeiCTHandler(object, DebugCard):
+class TaipeiCTHandler(DebugCard):
     @obj_hooker
     def __init__(
             self,
@@ -217,7 +220,7 @@ class TaipeiCTHandler(object, DebugCard):
         :param buf_dir:
         :param output_dir:
         """
-        self.verbose: int = verbose
+        self.verbose: int = args.verbose
         self.pid: str = pid
         self.has_pair: bool = False
         self.fix_tag: bool = fix_tag0008_0030
@@ -229,7 +232,8 @@ class TaipeiCTHandler(object, DebugCard):
         self.ct_output_path: str = f'{output_dir}/{pid}/{snum}/{uid}/{cp}/cand_0'
         self.nii_gz_file_name: str
         self.args = args
-        self.debug_attr_name = ['pid', 'snum', 'uid', 'cp', 'buf_dir', 'buf_path', 'ct_output_path', 'fix_tag0008_0030']
+        self.len_dcm = len(dicom_list)
+        self.debug_attr_name = ['pid', 'snum', 'uid', 'cp', 'buf_dir', 'buf_path', 'ct_output_path', 'fix_tag0008_0030', 'len_dcm']
 
         # Store all candidate.
         # The function of remove duplicate dicom file is implement at DedupDCM
@@ -250,7 +254,10 @@ class TaipeiCTHandler(object, DebugCard):
     ) -> tuple[pyd.FileDataset, str]:
         for pack in dicom_list:
             dicom_name = re.split('[/\\\]', pack[1])[-1]
-            copy_func(pack, f'{self.buf_path}/{dicom_name}')
+            dst_path = os.path.join(self.buf_path, dicom_name)
+            copy_func(pack, dst_path)
+            if self.verbose == 1:
+                print(f'Copying {pack[1]} -> {dst_path}')
         return pack
 
     def _make_needed_folder(self):
@@ -262,17 +269,25 @@ class TaipeiCTHandler(object, DebugCard):
 
         os.makedirs(self.buf_path, exist_ok=True)
         os.makedirs(self.ct_output_path, exist_ok=True)
+        if self.verbose == 1:
+            print(f'buf_path: {self.buf_path}')
+            print(f'ct_output_path: {self.ct_output_path}')
+
 
     def clean_buf(self):
         shutil.rmtree(self.buf_path)
         del self.buf_path
 
+    @obj_hooker
     def store(self):
         """
             Using CommandLine to convert the dicom series into a .nii.gz format file.
         :return:
         """
         # Using dcm2niix to convert dicom file into nii.gz file.
+        if self.snum == 2 and self.uid == "1.2.840.113654.2.70.1.299644915472865846444756882987166668049" and self.cp == 75.:
+            # breakpoint()
+            pass
         CUtils.commandline(self.ct_output_path, self.buf_path, self.verbose, dcm2niix_path=self.args.dcm2niix)
         self.final_path = list(filter(lambda x: not x.endswith('.json'), os.listdir(self.ct_output_path)))[0]
         self.nifit_ct = nib.load(f'{self.ct_output_path}/{self.final_path}')
@@ -293,7 +308,7 @@ class TaipeiCTHandler(object, DebugCard):
         if isinstance(other, TaipeiISPHandler):
             if self.verbose:
                 print("=" * 30)
-                print(f'Compare    | CT:{self.final_path} vs ISP: {other.folder_name}')
+                print(f'Compare    | CT:{getattr(self, "final_path", None)} vs ISP: {other.folder_name}')
                 print(f'Compare UID({self.uid == other.uid})| CT:{self.uid} vs ISP: {other.uid}')
                 print(f'Compare NUM({self.snum == other.snum})| CT:{self.snum} vs ISP: {other.snum}')
                 print(f'Compare CP({self.cp == other.cp}) | CT:{self.cp} vs ISP: {other.cp}')
@@ -324,14 +339,6 @@ class TaipeiCTHandler(object, DebugCard):
         ctxt = f'{ctxt}Final Path   :{self.final_path}\n'
         return ctxt
 
-    @property
-    def debug_card(self):
-        ctxt = ''
-        ctxt = f'{ctxt}Patient ID   :{self.pid}\n'
-        ctxt = f'{ctxt}Series Num   :{self.snum}\n'
-        ctxt = f'{ctxt}UID          :{self.uid}\n'
-        ctxt = f'{ctxt}Cardiac Phase:{self.cp:4}\n'
-        return ctxt
 
 class TaipeiCTDeduplicator(object):
     uid: str
@@ -394,3 +401,19 @@ class TaipeiCTDeduplicator(object):
             return self._largest_ct()
 
         return final_ct
+
+
+class TaipeiFactory:
+
+    @classmethod
+    def create_CT(cls) -> [TaipeiCTHandler, TaipeiCTDeduplicator]:
+        #@TODO implement CT part
+        pass
+
+    @classmethod
+    def create_isp(cls, legal_isp_list, pid, folder_name, output_dir, args=None) -> TaipeiISPHandler:
+        try:
+            isp = TaipeiISPHandler(legal_isp_list, pid, folder_name, output_dir, args=args)
+        except AssertionError as ase:
+            return None
+        return isp
