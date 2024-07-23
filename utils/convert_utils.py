@@ -181,8 +181,9 @@ def legal_ct_dicom_path(path: str) -> bool:
     """
     file_name = re.split('[/\\\]', path)[-1]
     is_dcm = path.endswith('.dcm')
-    # not_dup = re.match('\[[1-9]{1,}\]', path.split('.')[0][-3:]) is None
-    not_dup = file_name.split('.')[0].isdigit()
+    pure_name = file_name.split('.')[0]
+    not_dup = re.match(r'\[[0-9]{1,}\]', pure_name) is None
+    # not_dup = file_name.split('.')[0].isdigit()
     return is_dcm and not_dup
 
 
@@ -258,6 +259,12 @@ def record_offal_sample(offal_isp, offal_ct, args):
         json.dump(unpair_obj, jout)
 
 
+
+
+
+# Filter function
+
+
 def filter_legal_patient_folder(
         args: argparse.Namespace, ignore_condition: Optional[List[PatientId]] = None
 ) -> List[PatientId]:
@@ -289,6 +296,7 @@ def filter_legal_dcm(dcm_list: List[str], is_ct=True) -> List[str]:
     return legal_dcm
 
 
-
+def filter_not_dir(file_name_list: List[str]) -> List[str]:
+    return list(filter(lambda x: 'DIRFILE' not in x, file_name_list))
 
 
