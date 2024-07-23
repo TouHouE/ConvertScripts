@@ -222,7 +222,7 @@ class TaipeiCTHandler(DebugCard):
         """
         self.verbose: int = args.verbose
         self.pid: str = pid
-        self.has_pair: bool = False
+        # self.has_pair: bool = False
         self.fix_tag: bool = fix_tag0008_0030
         self.snum: int = snum
         self.uid: str = uid
@@ -234,7 +234,7 @@ class TaipeiCTHandler(DebugCard):
         self.args = args
         self.len_dcm = len(dicom_list)
         self.debug_attr_name = ['pid', 'snum', 'uid', 'cp', 'buf_dir', 'buf_path', 'ct_output_path', 'fix_tag0008_0030', 'len_dcm']
-
+        self.paired_isp: [TaipeiISPHandler] = list()
         # Store all candidate.
         # The function of remove duplicate dicom file is implement at DedupDCM
         self._make_needed_folder()
@@ -277,6 +277,9 @@ class TaipeiCTHandler(DebugCard):
     def clean_buf(self):
         shutil.rmtree(self.buf_path)
         del self.buf_path
+
+    def delete_self(self):
+        shutil.rmtree(self.ct_output_path)
 
     @obj_hooker
     def store(self):
@@ -339,6 +342,12 @@ class TaipeiCTHandler(DebugCard):
         ctxt = f'{ctxt}Final Path   :{self.final_path}\n'
         return ctxt
 
+    def num_paired_isp(self) -> int:
+        return len(self.paired_isp)
+
+    @property
+    def has_pair(self) -> bool:
+        return len(self.paired_isp) > 0
 
 class TaipeiCTDeduplicator(object):
     uid: str
@@ -346,8 +355,8 @@ class TaipeiCTDeduplicator(object):
     snum: int
     cp: CardiacPhase
 
-    def __init__(self, init_ct: 'TaipeiCTHandler'):
-        self.candidate: list['TaipeiCTHandler'] = []
+    def __init__(self, init_ct: TaipeiCTHandler):
+        self.candidate: list[TaipeiCTHandler] = []
         self.candidate.append(init_ct)
         self.uid = init_ct.uid
         self.pid = init_ct.pid
@@ -360,47 +369,60 @@ class TaipeiCTDeduplicator(object):
     def __getitem__(self, item):
         return self.candidate[item]
 
-    def __eq__(self, ct: 'TaipeiCTHandler'):
+    def __eq__(self, ct: Union[TaipeiCTHandler, TaipeiISPHandler, 'TaipeiCTDeduplicator']):
         return ct in self.candidate
 
     def _largest_ct(self):
         """
             If matching isp annotation doesn't exist, just choose the largest slice `TaipeiCTHandler` object.
         """
-        larger_idx = -1
+        largest_idx = -1
         volume = 0
+        elect_ct: TaipeiCTHandler
+
+        # Find out the most possible TaipeiCTHandler by who have the largest volume.
         for idx, ct in enumerate(self.candidate):
             if (cand_v := np.prod(ct.shape)) > volume:
-                larger_idx = idx
+                largest_idx = idx
                 volume = cand_v
+        else:  # The elected TaipeiCTHandler need remove from candidate list.
+            elect_ct = self.candidate[largest_idx]
+            self.candidate.remove(elect_ct)
+            pass
 
-        for idx, ct in enumerate(self.candidate):
-            if idx != larger_idx:
-                self.candidate[idx].clean_buf()
+        self._clean_reject()
+        return elect_ct
 
-        return self.candidate[larger_idx]
+    def _clean_reject(self):
+        # This statement aim to clean all .dcm file under buffer and
+        # the .nii.gz file stored from rejected TaipeiCTHandler
+        for ct in self.candidate:
+            ct.clean_buf()
+            ct.delete_self()
 
-    def __call__(self, isp: 'TaipeiISPHandler'):
-        final_ct: 'TaipeiCTHandler' | None = None
+    def __call__(self, isp: TaipeiISPHandler):
+        elect_ct: TaipeiCTHandler | None = None
 
         if isp is None:
             return self._largest_ct()
-
+        # If only a TaipeiCTHandler in candidate, just return that one.
         if len(self.candidate) == 1:
+            # No reject CT exists; we didn't need to call TaipeiCTDeduplicator._clean_reject method.
             return self.candidate[0]
 
         for idx, ct in enumerate(self.candidate):
             if ct.shape == isp.shape:
-                final_ct = ct
+                elect_ct = ct
                 self.candidate.remove(ct)
                 break
-            else:
-                ct.clean_buf()
-
-        if final_ct is None:
+        if elect_ct is None:
             return self._largest_ct()
 
-        return final_ct
+        self._clean_reject()
+        return elect_ct
+
+    def num_paired_isp(self):
+        return sum(raw_ct.num_paired_isp() for raw_ct in self.candidate)
 
 
 class TaipeiFactory:
