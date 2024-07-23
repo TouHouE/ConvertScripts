@@ -163,7 +163,7 @@ def build_ct_isp_pair(
         if isinstance(confusion_ct, models.taipei.TaipeiCTDeduplicator):
             final_ct = confusion_ct(isp)
             final_ct.store()    # Store .nii.gz ct file after deduplicate.
-            final_ct.has_pair = True
+            final_ct.paired_isp.append(isp)
             ct_list[idx] = final_ct     # Replace the deduplicator with only ct(`models.taipei.TaipeiCTHandler`)
         else:
             final_ct = confusion_ct
