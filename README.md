@@ -66,3 +66,5 @@
   - I do some rename, if you see "batch1" in file name, this table should match the batch1 nii folder
   - But, if is batch2, you should combine all of 3 table as 1 table then running the `prompt_generate.py`
 - The `prompt_scripts_utils.py` should place at same path.
+## PS
+1. The dcm2niix program just download from [dcm2niix](https://github.com/rordenlab/dcm2niix/releases)
