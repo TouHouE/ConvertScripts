@@ -182,7 +182,7 @@ def legal_ct_dicom_path(path: str) -> bool:
     file_name = re.split('[/\\\]', path)[-1]
     is_dcm = path.endswith('.dcm')
     pure_name = file_name.split('.')[0]
-    not_dup = re.match(r'\[[0-9]{1,}\]', pure_name) is None
+    not_dup = re.match(r'.*\[[0-9]{1,}\]', pure_name) is None
     # not_dup = file_name.split('.')[0].isdigit()
     return is_dcm and not_dup
 
