@@ -365,7 +365,9 @@ def main(args: argparse.Namespace):
 
         legal_file_patient: List[str] = [patient_id]
         args.data_root = data_root
-
+    if (num_patient := getattr(args, 'num_patient', None)) is not None:
+        legal_file_patient = np.random.choice(legal_file_patient, size=num_patient, replace=False)
+        print(f'Choosing {num_patient}')
     sub_world = np.array_split(legal_file_patient, nproc)
     sub_world = [models.Partition(proc_id=i, data=sworld, args=args) for i, sworld in enumerate(sub_world)]
     if nproc == 1:  # Only 1 thread, The Pool object is useless
@@ -410,6 +412,7 @@ if __name__ == '__main__':
     parser.add_argument('--test_ratio', type=float, required=False)
     parser.add_argument('--num_fold', type=int, required=False)
     parser.add_argument('--verbose', type=int, default=0)
+    parser.add_argument('--num_patient', type=int, required=False)
     global_args = parser.parse_args()
     mask_sure_folder_exist(global_args)
     main(global_args)
