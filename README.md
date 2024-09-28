@@ -59,6 +59,8 @@
         ├── ......
         └── CT標註result  <-- That one is --isp_root
         ```
+  - The progress
+    - if the status show **Skip ISP** it represent the isp folder didn't contain any tissue labels.
 ## 2. Generate the prompt file
 - Using `prompt_generate.py` to generate the VQA prompt 
 - This script should be launch after `dcm2niix_HsinChu.py` processed.
