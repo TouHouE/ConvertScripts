@@ -14,6 +14,7 @@ import pydicom as pyd
 
 from utils.data_typing import CardiacPhase, PatientId
 from utils import common_utils as ComUtils
+from utils.hooker import disk_reconnect_watir
 
 def _confirm_str(var) -> str:
     if var is None:
@@ -141,7 +142,8 @@ def get_init_prepare_df(dcm_collector) -> Dict[str, Any]:
     return _prepare_df
 
 
-def commandline(ct_output_path: str, buf_path: str, verbose: int = 0, dcm2niix_path: str = './lib/dcm2niix.exe'):
+@disk_reconnect_watir
+def commandline(ct_output_path: str, buf_path: str, verbose: int = 0, dcm2niix_path: str = './lib/dcm2niix.exe', **kwargs):
     if verbose == 1:
         kwargs = dict()
         print(f'{" DCM2NIIX INFO ":=^40}')
