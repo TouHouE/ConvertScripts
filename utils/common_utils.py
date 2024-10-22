@@ -4,7 +4,7 @@ import argparse
 import datetime as dt
 from typing import Dict, List, Any, Callable
 from constant import STATUS_LEN
-
+from utils import hooker
 
 import numpy as np
 from sklearn.model_selection import train_test_split, KFold
@@ -56,17 +56,19 @@ def print_info(status: str, info: str | Dict[str, Any], args: argparse.Namespace
         print(f'{_proc}|[{_status}]|[{_p_prog}]|[{args.pid}]| {info} time:{t0:%Y-%m-%d %H:%M:%S}')
 
 
-def write_content(path, content: str | Dict[str, Any] | List[Any], cover: bool = True, as_json=False) -> None:
+@hooker.disk_reconnect_watir
+def write_content(path, content: str | Dict[str, Any] | List[Any], cover: bool = True, as_json=False, **kwargs) -> None:
     """
     Store the content in disk.
     :param path: fully path of the file, must include file extension like .json or .txt
     :param content: if write as .txt file, we change it to `List[str]` if is .json, can belong dict or list
     :param cover: decide used covered write or append write, `True` for 'w+' `False` for 'a+'.
     :param as_json: if `True` using `json.dump` to store, otherwise, using `IO.TextIOWrapper.write` to store
-
+    :param kwargs: additional variable, but must contain a key call :type argparse.Namespace: `gargs`
     :return: None
     """
     open_mode = 'w+' if cover else 'a+'
+    # if not os.path.exists(path):
 
     with open(path, open_mode, encoding='utf-8') as ostream:
         if as_json:
