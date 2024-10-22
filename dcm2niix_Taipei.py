@@ -9,6 +9,7 @@ from copy import deepcopy
 from functools import partial
 from operator import methodcaller, itemgetter
 from typing import Tuple, Any, Callable, List, Dict, Iterable, Optional
+import shutil
 
 import numpy as np
 import nibabel as nib
@@ -19,6 +20,7 @@ from constant import DIGIT2LABEL_NAME, LABEL_NAME2DIGIT
 from utils import convert_utils as CUtils
 from utils import common_utils as ComUtils
 from utils.data_typing import CardiacPhase, FilePathPack, IspCtPair, PatientId
+from utils import hooker
 
 IS_ZIP: methodcaller = methodcaller('endswith', '.zip')
 WRAP_ERR: itemgetter = itemgetter(1)
@@ -272,22 +274,26 @@ def start_proc(partition: models.Partition) -> List[IspCtPair]:
         setattr(args, 't0', t0)
         setattr(args, 'pid', pid)
         ComUtils.print_info('Start', '', args)
-
+        if os.path.exists((ppath := os.path.join(args.out_dir, pid))):
+            ComUtils.print_info('Clean', f'Try to remove previous remain data: {ppath}', args)
+            shutil.rmtree(ppath)
         try:
             patient_pack: Tuple[List[IspCtPair], List[str]] = patient_proc(pid, args)
             pid_result: List[IspCtPair] = WRAP_DATA(patient_pack)
             raw_error_list: List[str] = WRAP_ERR(patient_pack)
             results.extend(pid_result)
             error_list_to_store: List[str] = [f'[{ComUtils.time2str(t0)}]|{err_file}' for err_file in raw_error_list]
-
-            ComUtils.write_content(rf'{args.meta_dir}/{pid}.json', pid_result, as_json=True)
+            meta_pid_path = os.path.join(args.meta_dir, f'{pid}.json')
+            ComUtils.write_content(meta_pid_path, pid_result, as_json=True, gargs=args)
 
             if len(error_list_to_store) > 0:    # If no error don't write down any error message.
-                ComUtils.write_content(rf'{args.err_dir}/{pid}.txt', error_list_to_store, cover=False, as_json=False)
+                error_pid_path = os.path.join(args.err_dir, f'{pid}.txt')
+                ComUtils.write_content(error_pid_path, error_list_to_store, cover=False, as_json=False, gargs=args)
             end_status: str = 'Done'
         except Exception as e:
             error_content = [e.args, traceback.format_exc()]
-            ComUtils.write_content(rf'{args.err_dir}/{pid}.txt', error_content, cover=False, as_json=False)
+            err_path = os.path.join(args.err_dir, f'{pid}.txt')
+            ComUtils.write_content(err_path, error_content, cover=False, as_json=False, gargs=args)
             end_status: str = 'Error'
 
         tn = dt.datetime.now()
@@ -310,7 +316,8 @@ def unzip_proc(args, folder, member) -> str | None:
     result = CUtils.unzip(args, folder, member)
 
     if isinstance(result, list):
-        ComUtils.write_content(f'{args.err_dir}/Unzip_error.txt', result, cover=False, as_json=False)
+        err_unzip_path = os.path.join(args.err_dir, 'Unzip_error.txt')
+        ComUtils.write_content(err_unzip_path, result, cover=False, as_json=False, gargs=args)
         return None
     return result
 
@@ -319,17 +326,20 @@ def initial_ignore_list(args: argparse.Namespace) -> List[PatientId]:
     pdata: List[PatientId] = list()
     if (ip := args.ignore_path) is not None:
         if ip == 'no':
+            print('Do not ignore any patient.')
             return pdata
-
+        print(f'Loading ignore patient json file from: {ip}')
         with open(ip, 'r') as jin:
             ignore_files_in_json: List[PatientId] = json.load(jin)
         for ctxt in ignore_files_in_json:
             patient_id = ctxt.split('.')[0]
             pdata.append(PatientId(patient_id))
+        print(f'# of ignore patients: {len(pdata)}')
         return pdata
-
+    print(f'Loading ignore patient from meta folder: {args.meta_dir}')
     meta_dir: str = args.meta_dir
     pdata = [PatientId(name.split('.')[0]) for name in os.listdir(meta_dir) if name.endswith('.json')]
+    print(f"# of ignore patients: {len(pdata)}")
     return pdata
 
 
@@ -377,15 +387,24 @@ def main(args: argparse.Namespace):
             all_results = pool.map(start_proc, sub_world)
             for proc_result in all_results:
                 sample_pair['data'].extend(proc_result)
-    ComUtils.write_content(rf'{args.meta_dir}/raw_sample.json', sample_pair, as_json=True)
+    meta_total_path = os.path.join(args.meta_dir, 'raw_sample.json')
+    ComUtils.write_content(meta_total_path, sample_pair, as_json=True, gargs=args)
 
     if all(needed_attr is not None for needed_attr in [getattr(args, 'test_ratio'), getattr(args, 'num_fold')]):
         develop_model_table = ComUtils.make_vista_style_table(sample_pair.copy())
-        ComUtils.write_content(rf'{args.meta_dir}/vista_table.json', develop_model_table, as_json=True)
+        meta_vista_path = os.path.join(args.meta_dir, 'vista_table.json')
+        ComUtils.write_content(meta_vista_path, develop_model_table, as_json=True, gargs=args)
     return
 
 
-def mask_sure_folder_exist(args: argparse.Namespace):
+@hooker.disk_reconnect_watir
+def mask_sure_folder_exist(args: argparse.Namespace, **kwargs):
+    if os.path.exists(args.buf_dir):
+        import shutil
+        print(f'Remove all previous buffer data first: {args.buf_dir}')
+        shutil.rmtree(args.buf_dir)
+        print('Done')
+
     os.makedirs(f'{args.meta_dir}', exist_ok=True)
     os.makedirs(f'{args.out_dir}', exist_ok=True)
     os.makedirs(f'{args.buf_dir}', exist_ok=True)
@@ -402,17 +421,34 @@ if __name__ == '__main__':
     parser.add_argument('--num_workers', type=int, default=1)
     parser.add_argument('--worker_ratio', type=float, default=None)
     parser.add_argument('--ignore_path', type=str, default=None)
-    parser.add_argument('--out_dir', type=str, default='./NiiTaipei/out')
-    parser.add_argument('--buf_dir', type=str, default='./NiiTaipei/buf')
-    parser.add_argument('--mask_dir', type=str, default='./NiiTaipei/mask')
-    parser.add_argument('--meta_dir', type=str, default='./NiiTaipei/meta')
-    parser.add_argument('--err_dir', type=str, default='./NiiTaipei/err')
+    parser.add_argument('--out_dir', type=str, default='out')
+    parser.add_argument('--buf_dir', type=str, default='buf')
+    parser.add_argument('--mask_dir', type=str, default='mask')
+    parser.add_argument('--meta_dir', type=str, default='meta')
+    parser.add_argument('--err_dir', type=str, default='err')
     parser.add_argument('--dst_root', type=str, default='./NiiTaipei')
     parser.add_argument('--dcm2niix', type=str, default='./lib/dcm2niix.exe')
     parser.add_argument('--test_ratio', type=float, required=False)
     parser.add_argument('--num_fold', type=int, required=False)
     parser.add_argument('--verbose', type=int, default=0)
     parser.add_argument('--num_patient', type=int, required=False)
+
     global_args = parser.parse_args()
-    mask_sure_folder_exist(global_args)
-    main(global_args)
+    global_args.out_dir = os.path.join(global_args.dst_root, global_args.out_dir)
+    global_args.meta_dir = os.path.join(global_args.dst_root, global_args.meta_dir)
+    global_args.err_dir = os.path.join(global_args.dst_root, global_args.err_dir)
+    global_args.mask_dir = os.path.join(global_args.dst_root, global_args.mask_dir)
+    global_args.buf_dir = os.path.join(global_args.dst_root, global_args.buf_dir)
+    print(f'ISP root: {global_args.isp_root}')
+    print(f'DCM root: {global_args.data_root}')
+    print(f'dcm2niix location: {global_args.dcm2niix}')
+
+
+
+    mask_sure_folder_exist(global_args, gargs=global_args)
+    try:
+        main(global_args)
+    except KeyboardInterrupt or Exception as e:
+        import shutil
+        shutil.rmtree(global_args.buf_dir)
+        print('Remove {}'.format(global_args.buf_dir))
