@@ -4,6 +4,7 @@ import shutil
 import argparse
 import traceback
 from typing import NewType, Union, Callable
+import datetime as dt
 
 import numpy as np
 import pydicom as pyd
@@ -150,33 +151,40 @@ class TaipeiISPHandler(DebugCard):
         if self.is_saved:
             return
         host_ct = ct.nifit_ct
-        store_path = f'{self.output_dir}/{self.pid}/{self.uid}/{ct.cp}/{self.folder_name}'
+        store_path = os.path.join(self.output_dir, self.pid, self.uid, f'{ct.cp}', self.folder_name)
+        # store_path = f'{self.output_dir}/{self.pid}/{self.uid}/{ct.cp}/{self.folder_name}'
         os.makedirs(store_path, exist_ok=True)
         union_mask: np.ndarray = self._collect_tissue()
 
         try:
             union_mask, union_plaque = self._collect_plaque(union_mask, host_ct)
         except Exception as e:
-            with open(f'{self.args.err_dir}/plaque_error.txt', 'a+') as fout:
+            perr = os.path.join(self.args.err_dir, 'plaque_error.txt')
+            with open(perr, 'a+') as fout:
                 # fout.write(f'{"=" * 30}\n')
                 fout.write(f"{str(self)}Got error during collect_plaque\n")
                 fout.write(traceback.format_exc())
             union_plaque = None
 
         mask_nii = nib.Nifti1Image(union_mask, host_ct.affine)
-        nib.save(mask_nii, f'{store_path}/union_mask.nii.gz')
-        self.final_path['mask'] = f'{store_path}/union_mask.nii.gz'
+        mask_path = os.path.join(store_path, 'union_mask.nii.gz')
+        nib.save(mask_nii, mask_path)
+        self.final_path['mask'] = mask_path
 
         if union_plaque is not None:
             plaque_nii = nib.Nifti1Image(union_plaque, host_ct.affine)
-            nib.save(plaque_nii, f'{store_path}/union_plaque.nii.gz')
-            self.final_path['plaque'] = f'{store_path}/union_plaque.nii.gz'
+            plq_path = os.path.join(store_path, 'union_plaque.nii.gz')
+            nib.save(plaque_nii, plq_path)
+            self.final_path['plaque'] = plq_path
         self.is_saved = True
 
     def get_store_path(self):
         _nii_storage_path = self.final_path.copy()
         for key, value in _nii_storage_path.items():
-            _nii_storage_path[key] = value.replace(self.args.dst_root, '')
+            tmp = value.replace(self.args.dst_root, '')
+            if tmp[0] in ['/', r'\\']:
+                tmp = tmp[1:]
+            _nii_storage_path[key] = tmp
         return _nii_storage_path
 
     def __repr__(self):
@@ -228,8 +236,10 @@ class TaipeiCTHandler(DebugCard):
         self.uid: str = uid
         self.cp: CardiacPhase = cp
         self.buf_dir: str = buf_dir
-        self.buf_path: str = f'{buf_dir}/{pid}/{snum}/{uid}/{cp}/cand_0'
-        self.ct_output_path: str = f'{output_dir}/{pid}/{snum}/{uid}/{cp}/cand_0'
+        # self.buf_path: str = f'{buf_dir}/{pid}/{snum}/{uid}/{cp}/cand_0'
+        self.buf_path: str = os.path.join(buf_dir, f'{pid}', f'{snum}', f'{uid}', f'{cp}', 'cand_0')
+        # self.ct_output_path: str = f'{output_dir}/{pid}/{snum}/{uid}/{cp}/cand_0'
+        self.ct_output_path: str = os.path.join(output_dir, f'{pid}', f'{snum}', uid, f'{cp}', 'cand_0')
         self.nii_gz_file_name: str
         self.args = args
         self.len_dcm = len(dicom_list)
@@ -273,6 +283,8 @@ class TaipeiCTHandler(DebugCard):
             print(f'buf_path: {self.buf_path}')
             print(f'ct_output_path: {self.ct_output_path}')
 
+    def _remake_needed_folder(self, remake_path: str) -> None:
+        os.makedirs(remake_path, exist_ok=True)
 
     def clean_buf(self):
         shutil.rmtree(self.buf_path)
@@ -291,10 +303,14 @@ class TaipeiCTHandler(DebugCard):
         if self.snum == 2 and self.uid == "1.2.840.113654.2.70.1.299644915472865846444756882987166668049" and self.cp == 75.:
             # breakpoint()
             pass
-        CUtils.commandline(self.ct_output_path, self.buf_path, self.verbose, dcm2niix_path=self.args.dcm2niix)
+
+        CUtils.commandline(self.ct_output_path, self.buf_path, self.verbose, dcm2niix_path=self.args.dcm2niix, gargs=self.args)
+        # Got .nii.gz file name
         self.final_path = list(filter(lambda x: not x.endswith('.json'), os.listdir(self.ct_output_path)))[0]
-        self.nifit_ct = nib.load(f'{self.ct_output_path}/{self.final_path}')
-        self.final_path = f'{self.ct_output_path}/{self.final_path}'
+        # Turn it into abs path
+        self.final_path = os.path.join(self.ct_output_path, self.final_path)
+        self.nifit_ct = nib.load(self.final_path)
+        # self.final_path = f'{self.ct_output_path}/{self.final_path}'
         # self.pid = pid
         if self.verbose == 1:
             print(f'Final path   :{self.final_path}')
@@ -304,6 +320,8 @@ class TaipeiCTHandler(DebugCard):
     def get_store_path(self) -> str:
         _final_path: str = self.final_path
         _final_path: str = _final_path.replace(self.args.dst_root, '')
+        if _final_path[0] in ['/', r'\\']:
+            _final_path = _final_path[1:]
         return _final_path
 
     def __eq__(self, other) -> bool:
@@ -386,8 +404,8 @@ class TaipeiCTDeduplicator(object):
                 largest_idx = idx
                 volume = cand_v
         else:  # The elected TaipeiCTHandler need remove from candidate list.
-            elect_ct = self.candidate[largest_idx]
-            self.candidate.remove(elect_ct)
+            elect_ct = self.candidate.pop(largest_idx)
+            # self.candidate.remove(elect_ct)
             pass
 
         self._clean_reject()
