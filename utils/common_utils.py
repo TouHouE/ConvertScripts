@@ -9,7 +9,7 @@ from utils import hooker
 import numpy as np
 from sklearn.model_selection import train_test_split, KFold
 
-__all__ = ['is_numerical', 'time2str', 'print_info', 'write_content', 'make_vista_style_table']
+__all__ = ['is_numerical', 'time2str', 'print_info', 'write_content', 'make_vista_style_table', 'load_json']
 
 
 def is_numerical(foo: str):
@@ -104,6 +104,9 @@ def make_vista_style_table(raw_table, args):
     return vista_table
 
 
+def load_json(path):
+    with open(path, 'r') as jin:
+        return json.load(jin)
 
 
 
