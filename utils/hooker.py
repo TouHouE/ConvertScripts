@@ -26,7 +26,7 @@ def disk_reconnect_watir(func: Callable):
         gargs = kwargs.get('gargs', kwargs.get('args', kwargs.get('arg', kwargs.get('garg'))))
 
         t0 = tn = dt.datetime.now()
-        while (tn - t0).seconds < gargs.timeout:
+        while (tn - t0).seconds < getattr(gargs, 'timeout', 5):
             try:
                 _result = func(*args, **kwargs)
                 return _result
