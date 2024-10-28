@@ -1,9 +1,10 @@
 from typing import Callable
 import sys
+import datetime as dt
 
 
 __all__ = [
-    'obj_hooker', 'disk_reconnect_watir'
+    'obj_hooker', 'disk_reconnect_watir', 'timer'
 ]
 
 
@@ -19,6 +20,15 @@ def obj_hooker(func: Callable):
             raise type(e)(f'{except_info}\n{debug_info}').with_traceback(tb)
     return _wrapper
 
+
+def timer(func: Callable):
+    def _wrapper(*args, **kwargs):
+        start = dt.datetime.now()
+        result = func(*args, **kwargs)
+        end = dt.datetime.now()
+        print(f'{func.__name__} took {(end - start).total_seconds()}')
+        return result
+    return _wrapper
 
 def disk_reconnect_watir(func: Callable):
     import datetime as dt
