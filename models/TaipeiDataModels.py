@@ -5,6 +5,7 @@ import argparse
 import traceback
 from typing import NewType, Union, Callable
 import datetime as dt
+import logging
 
 import numpy as np
 import pydicom as pyd
@@ -235,11 +236,13 @@ class TaipeiCTHandler(DebugCard):
         self.snum: int = snum
         self.uid: str = uid
         self.cp: CardiacPhase = cp
+        self.cand_num: int = 0
         self.buf_dir: str = buf_dir
-        # self.buf_path: str = f'{buf_dir}/{pid}/{snum}/{uid}/{cp}/cand_0'
+        self.output_dir: str = output_dir
+        self.path_combine: list[str] = [f'{v}' for v in [pid, snum, uid, cp]]
         self.buf_path: str = os.path.join(buf_dir, f'{pid}', f'{snum}', f'{uid}', f'{cp}', 'cand_0')
-        # self.ct_output_path: str = f'{output_dir}/{pid}/{snum}/{uid}/{cp}/cand_0'
-        self.ct_output_path: str = os.path.join(output_dir, f'{pid}', f'{snum}', uid, f'{cp}', 'cand_0')
+        self.ct_output_path: str = os.path.join(output_dir, f'{pid}', f'{snum}', f'{uid}', f'{cp}', 'cand_0')
+
         self.nii_gz_file_name: str
         self.args = args
         self.len_dcm = len(dicom_list)
@@ -271,12 +274,20 @@ class TaipeiCTHandler(DebugCard):
         return pack
 
     def _make_needed_folder(self):
-        cand_cnt = 0
+        #------ store all duplicate -------#
+        cand_cnt = 0    # Start from 0
         while os.path.exists(self.buf_path):
             self.buf_path = self.buf_path.replace(f"cand_{cand_cnt}", f"cand_{cand_cnt + 1}")
             cand_cnt += 1
-        self.ct_output_path: str = self.ct_output_path.replace(f"cand_{cand_cnt - 1}", f"cand_{cand_cnt}")
 
+        self.ct_output_path: str = os.path.join(
+            self.output_dir, *self.path_combine, f'cand_{cand_cnt}'
+        )
+
+        self.cand_num = cand_cnt
+        logging.debug(f'buf_path: {self.buf_path}')
+        logging.debug(f'ct_output_path: {self.ct_output_path}')
+        logging.debug(f'Cand_num: {self.cand_num}\n')
         os.makedirs(self.buf_path, exist_ok=True)
         os.makedirs(self.ct_output_path, exist_ok=True)
         if self.verbose == 1:
@@ -305,8 +316,16 @@ class TaipeiCTHandler(DebugCard):
             pass
 
         CUtils.commandline(self.ct_output_path, self.buf_path, self.verbose, dcm2niix_path=self.args.dcm2niix, gargs=self.args)
+        logging.debug(os.listdir(self.ct_output_path))
+        logging.debug(os.listdir(self.buf_path))
+        logging.debug('\n\n')
+
         # Got .nii.gz file name
-        self.final_path = list(filter(lambda x: not x.endswith('.json'), os.listdir(self.ct_output_path)))[0]
+        try:
+            self.final_path = list(filter(lambda x: not x.endswith('.json'), os.listdir(self.ct_output_path)))[0]
+        except IndexError:
+            CUtils.commandline(self.ct_output_path, self.buf_path, verbose=1, dcm2niix_path=self.args.dcm2niix, gargs=self.args)
+            raise
         # Turn it into abs path
         self.final_path = os.path.join(self.ct_output_path, self.final_path)
         self.nifit_ct = nib.load(self.final_path)
@@ -407,7 +426,7 @@ class TaipeiCTDeduplicator(object):
             elect_ct = self.candidate.pop(largest_idx)
             # self.candidate.remove(elect_ct)
             pass
-
+        logging.debug(f'At: {idx}, cand_num: {elect_ct.cand_num}\n')
         self._clean_reject()
         return elect_ct
 
@@ -430,8 +449,8 @@ class TaipeiCTDeduplicator(object):
 
         for idx, ct in enumerate(self.candidate):
             if ct.shape == isp.shape:
-                elect_ct = ct
-                self.candidate.remove(ct)
+                elect_ct = self.candidate.pop(idx)
+                logging.debug(f'Elected CT At: {idx}, cand num: {ct.cand_num}\n')
                 break
         if elect_ct is None:
             return self._largest_ct()
