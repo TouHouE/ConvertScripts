@@ -143,24 +143,30 @@ def get_init_prepare_df(dcm_collector) -> Dict[str, Any]:
 
 
 @disk_reconnect_watir
-def commandline(ct_output_path: str, buf_path: str, verbose: int = 0, dcm2niix_path: str = './lib/dcm2niix.exe', **kwargs):
-    if verbose == 1:
+def commandline(ct_output_path: str, buf_path: str, verbose: int = 0, dcm2niix_path: str = './lib/dcm2niix.exe', **pykwargs) -> None:
+    show_error_msg = pykwargs.get('debug', False)
+    kwargs = dict()
+    dcm2niix_args = list()
+    if verbose == 1 or show_error_msg:
         kwargs = dict()
+        # dcm2niix_args.extend(['-v', '2'])
         print(f'{" DCM2NIIX INFO ":=^40}')
     else:
-        kwargs = dict(stdout=sp.DEVNULL, stderr=sp.STDOUT)
+        kwargs['stdout'] = sp.DEVNULL
+        kwargs['stderr'] = sp.STDOUT
 
     sp.call(
         [dcm2niix_path,
          '-w', '1',  # if target is already, 1:overwrite it. 0:skip it
          '-z', 'y',  # Do .gz compress,
+         *dcm2niix_args,
          '-o', ct_output_path,
          buf_path
          ], **kwargs
     )
     if verbose == 1:
         print(f'{" DCM2NIIX INFO End ":=^40}')
-
+    return None
 
 def make_path(df: pd.DataFrame):
     pid = df['pid'].unique()[0].lower()
