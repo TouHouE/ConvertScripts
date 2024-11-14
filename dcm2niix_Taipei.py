@@ -10,6 +10,8 @@ from functools import partial
 from operator import methodcaller, itemgetter
 from typing import Tuple, Any, Callable, List, Dict, Iterable, Optional
 import shutil
+import logging
+# logging.basicConfig(level=[logging.WARNING, logging.INFO, logging.DEBUG], format='[%(asctime)s][%(name)s][%(levelname)s][At %(filename)s %(funcName)s line:%(lineno)d - %(message)s')
 
 import numpy as np
 import nibabel as nib
@@ -108,6 +110,10 @@ def build_ct_list(
             continue
         elif len(legal_dcm) < 30:
             ComUtils.print_info('Skip CT', info=dict(n_dcm=len(legal_dcm)), args=args)
+            continue
+        elif 'ignore.txt' in files:
+            ComUtils.print_info('Found Ignore.txt', info=root, args=args)
+            logging.warning(f'Ignore CT under: {root}')
             continue
         # print(len(legal_dcm))
         # Do single folder at there.
@@ -275,6 +281,7 @@ def start_proc(partition: models.Partition) -> List[IspCtPair]:
         setattr(args, 'pid', pid)
         ComUtils.print_info('Start', '', args)
         if os.path.exists((ppath := os.path.join(args.out_dir, pid))):
+            # Previous remains data should be removed.
             ComUtils.print_info('Clean', f'Try to remove previous remain data: {ppath}', args)
             shutil.rmtree(ppath)
         try:
@@ -443,6 +450,12 @@ if __name__ == '__main__':
     print(f'DCM root: {global_args.data_root}')
     print(f'dcm2niix location: {global_args.dcm2niix}')
 
+    for level in range(10, 60, 10):
+        logging.basicConfig(
+            filename=os.path.join(global_args.dst_root, 'debug.log'),
+            level=level,
+            format='[%(asctime)s][%(name)s][%(levelname)s][At %(filename)s %(funcName)s line:%(lineno)d] %(message)s'
+        )
 
 
     mask_sure_folder_exist(global_args, gargs=global_args)
