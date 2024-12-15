@@ -181,7 +181,9 @@ def legal_plaque(x: pyd.Dataset):
     return False
 
 
-def reconstruct_plaque(ds, host_ct, return_plaque_name: bool = True, verbose: bool = False) -> list[np.ndarray] | list[list[np.ndarray, str]]:
+def reconstruct_plaque(
+        ds, host_ct, return_plq_name: bool = True, ignore_unnamed_plq: bool = True, verbose: bool = False
+) -> list[np.ndarray] | list[list[np.ndarray, str]]:
 
     tarmar_list = ds.get((0x07a1, 0x1050))
     if tarmar_list is None:
@@ -207,8 +209,8 @@ def reconstruct_plaque(ds, host_ct, return_plaque_name: bool = True, verbose: bo
         plaque_name_length = segment3_len
         plaque_name = segment3.decode("UTF-16").strip('\x00')
         if verbose:
-            print(f"Plaqu#{plaque_idx} {plaque_name}: segment2_len:{segment2_len}, segment3_len:{segment3_len}/{len(segment3)}", end='')
-        if (plaque_name == ''):  # unamed candidate plaque automatically generate by ISP
+            print(f"PLQ#{plaque_idx} Shape: {pshape} {plaque_name}: segment2_len:{segment2_len}, segment3_len:{segment3_len}/{len(segment3)}", end='')
+        if (plaque_name == '') and ignore_unnamed_plq:  # unnamed candidate plaque is automatically generate by ISP
             if verbose:
                 print('-> That is unnamed plaque. We ignore that')
             continue
@@ -243,12 +245,10 @@ def reconstruct_plaque(ds, host_ct, return_plaque_name: bool = True, verbose: bo
             i, j, k, _ = ijkp.astype(np.int32)
             volume_ijk[i, j, k] = 1
         pack = [volume_ijk]
-        if return_plaque_name:
+        if return_plq_name:
             pack.append(f'{ds.ImageComments}_{plaque_name}')
 
         plaque_list.append(pack)
-        # plaque_nii = nib.Nifti1Image(volume_ijk, host_ct.affine)
-        # nib.save(plaque_nii, f'./static/mask_{ds.ImageComments}_plaque-{plaque_idx}-{plaque_name}-Af.nii.gz')
     return plaque_list
 
 # This one was abandoned
