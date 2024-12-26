@@ -1,8 +1,12 @@
-from typing import Callable
 import argparse
+from collections import Counter
 import multiprocessing as mp
 import logging
 import shutil
+
+from typing import Callable
+
+import nibabel
 
 logging.basicConfig(level=logging.INFO, format='[%(asctime)s %(name)s %(levelname)s] %(message)s')
 import os
@@ -20,6 +24,18 @@ from utils import hooker
 
 
 def patient_worker(pid, loader: Callable, saver: Callable, args, **kwargs):
+    """
+    Each worker will return a deduplicate meta json, (this meaning, if an Image has multiple label, we will merge all of label into one file).
+    Args:
+        pid(str): patient id
+        loader(Callable): The function using to load the label .nii.gz file
+        saver(Callable): The function using to store the merged label .nii.gz file:
+        args:
+        **kwargs:
+
+    Returns(list[dict[str, Any]]): A list of pack almost like original meta .json file
+    """
+
     def _load_nii_gz(_path, _union_label=None):
         if os.path.exists(_path):
             return loader(_path)
@@ -27,7 +43,14 @@ def patient_worker(pid, loader: Callable, saver: Callable, args, **kwargs):
             return torch.zeros_like(_union_label)
         return None
 
-    def _pop_head_slash(_path):
+    def _pop_head_slash(_path) -> str | os.PathLike:
+        """
+        Confirm there aren't any `/` or `\` at the `_path` start
+        Args:
+            _path:
+        Returns: A string that not start with `/` and `\`.
+
+        """
         if _path is None:
             return None
         if _path[0] not in r'/\\':
@@ -42,30 +65,38 @@ def patient_worker(pid, loader: Callable, saver: Callable, args, **kwargs):
     if len(paired_list) == 0:
         logging.info(f'Proc-{proc_id}|[{prog}]|[ No paired ]')
         return deduplicate_meta_table
-
+    # Collect all of same image pair into one list
     for pack in paired_list:
         image_path = pack['image']
-        image_path_as_key = re.split(r'[/\\]', _pop_head_slash(image_path))
+        image_path_as_key = '/'.join(re.split(r'[/\\]', _pop_head_slash(image_path)))
         if repeat_map.get(image_path_as_key) is None:
             repeat_map[image_path_as_key] = list()
         repeat_map[image_path_as_key].append(pack)
-    merge_getter: itemgetter = itemgetter(1, 3, 4)
+    # Collect Done.
+
+    merge_getter: itemgetter = itemgetter(1, 3, 4)  # This getter trying to wrap 1) patient id. 2) UID. 3) cardiac phase
     for image_name, pack_list in repeat_map.items():
         if len(pack_list) == 1:
             deduplicate_meta_table.append(pack_list[0])
             continue
-        logging.info(f'Proc-{proc_id}|[{prog}]|[ INFO ]|Pair repeat: {os.path.join(*image_name)}')
+        logging.info(f'Proc-{proc_id}|[{prog}]|[ INFO ]|Pair repeat: {image_name}')
+        most_common_cp: float | int = Counter(__pack['cp'] for __pack in pack_list).most_common(1)[0][0]
+        most_common_uid: str = Counter(__pack['uid'] for __pack in pack_list).most_common(1)[0][0]
         p0 = pack_list[0]
         pre_union_label_path = _pop_head_slash(p0.get('label', p0.get('mask')))
         union_label_path = os.path.join(args.root, pre_union_label_path)
         union_label = _load_nii_gz(union_label_path)
-        all_plq = [_load_nii_gz(os.path.join(args.root, _pop_head_slash(_pack.get('plaque', '_'))), union_label) for
-                   _pack in pack_list]
+        all_plq: list[nibabel.Nifti1Image] = [
+            _load_nii_gz(os.path.join(args.root, _pop_head_slash(_pack.get('plaque', '_'))), union_label) for
+            _pack in pack_list]
         bg = torch.zeros_like(union_label)
-        # image_cutoff = re.split(r'[/\\]', _pop_head_slash(p0['image']))
-        image_cutoff = image_name.copy()
+        image_cutoff = re.split(r'[/\\]', _pop_head_slash(p0['image']))
+        # image_cutoff = image_name.copy()
         img_pid, uid, cp = merge_getter(image_cutoff)
-        merge_label_dir = os.path.join(args.mask_dir, img_pid, uid, str(cp))
+        merge_label_dir = os.path.join(args.mask_dir, img_pid, most_common_uid, str(most_common_cp))
+        if not os.path.exists(merge_label_dir):
+            os.makedirs(merge_label_dir, exist_ok=True)
+            logging.info(f'Proc-{proc_id}|[{prog}]|[ Mkdir ]|new mask dir: {merge_label_dir}')
 
         for plq in all_plq:
             union_label[plq == 1] = 10
@@ -76,8 +107,11 @@ def patient_worker(pid, loader: Callable, saver: Callable, args, **kwargs):
         except Exception as e:
             print(image_name)
             print(merge_getter(image_cutoff))
+            print(f'The Most COMMON:')
+            print(f'UID: {most_common_uid}')
+            print(f'CP: {most_common_cp}')
         deduplicate_meta_table.append({
-            'image': os.path.join(*image_name),
+            'image': image_name,
             'mask': os.path.join(merge_label_dir, 'merge_union_label.nii.gz'),
             'plaque': os.path.join(merge_label_dir, 'merge_plaque.nii.gz'),
             'cp': cp,
@@ -126,12 +160,13 @@ def clean_all_merge_sample(args):
     logging.info(f'Start Cleaning All Merge Sample under {mask_path}')
     for roots, dirs, files in os.walk(mask_path, topdown=True):
         files = list(filter(lambda x: x.endswith('.nii.gz') and 'merge' in x, files))
-        if len(dirs) < 2 and len(files) != 2:
+        if len(files) == 0:
             continue
-        os.remove(os.path.join(roots, 'merge_plaque.nii.gz'))
-        os.remove(os.path.join(roots, 'merge_plaque.nii.gz.nii.gz'))
-        os.remove(os.path.join(roots, 'merge_union_label.nii.gz'))
-        os.remove(os.path.join(roots, 'merge_union_label.nii.gz.nii.gz'))
+        for file_name, ext_name in zip(['plaque', 'union_label'], ['nii.gz', 'nii.gz.nii.gz']):
+            merge_path = os.path.join(roots, f'merge_{file_name}.{ext_name}')
+            if not os.path.exists(merge_path):
+                continue
+            os.remove(merge_path)
 
 
 def main(args):
@@ -149,8 +184,6 @@ def main(args):
     for worker_list in worker_collections:
         merge_list.extend(worker_list)
     write_content(os.path.join(args.root, args.meta_dir, 'Deduplicate_PLQ_Table.json'), merge_list, as_json=True)
-
-
 
     pass
 
