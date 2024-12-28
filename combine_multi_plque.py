@@ -140,7 +140,7 @@ def clean_all_merge_sample(args):
     logging.info(f'Start Cleaning All Merge Sample under {mask_path}')
     for roots, dirs, files in os.walk(mask_path, topdown=True):
         files = list(filter(lambda x: x.endswith('.nii.gz') and 'merge' in x, files))
-        if len(dirs) < 2 and len(files) != 2:
+        if len(files) == 0:
             continue
         delete_file(os.path.join(roots, 'merge_plaque.nii.gz'))
         delete_file(os.path.join(roots, 'merge_plaque.nii.gz.nii.gz'))
