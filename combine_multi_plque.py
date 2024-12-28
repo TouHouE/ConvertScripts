@@ -1,4 +1,4 @@
-from typing import Callable
+from typing import Callable, MutableMapping, Mapping, Optional
 import argparse
 import multiprocessing as mp
 import logging
@@ -11,80 +11,94 @@ from operator import itemgetter
 
 # import nibabel as nib
 import numpy as np
+from monai.data import MetaTensor
 from monai import transforms as MT
 import torch
 
-from models.CommonDataModels import Partition
-from utils.common_utils import write_content, load_json
+from models.CommonDataModels import Partition, SegmentMetaPack, Detail
+from utils.common_utils import write_content, load_json, make_final_namespace, delete_file
 from utils import hooker
 
 
 def patient_worker(pid, loader: Callable, saver: Callable, args, **kwargs):
-    def _load_nii_gz(_path, _union_label=None):
+    def _load_nii_gz(_path: str | os.PathLike,
+                     _union_label: Optional[MetaTensor | torch.Tensor] = None) -> MetaTensor | torch.Tensor | None:
         if os.path.exists(_path):
             return loader(_path)
         if _union_label is not None:
             return torch.zeros_like(_union_label)
         return None
 
-    def _pop_head_slash(_path):
+    def _pop_head_slash(_path: str | os.PathLike) -> str | os.PathLike:
         if _path is None:
             return None
         if _path[0] not in r'/\\':
             return _path
         return _pop_head_slash(_path[1:])
 
-    paired_list = load_json(os.path.join(args.root, args.meta_dir, pid))
-    repeat_map = dict()
+    paired_list: list[SegmentMetaPack] = [SegmentMetaPack(**_pack) for _pack in
+                                          load_json(os.path.join(args.root, args.meta_dir, pid))]
+    repeat_map_image_path2pack_list: MutableMapping[str, list[SegmentMetaPack]] = dict()
     deduplicate_meta_table = list()
     proc_id = kwargs.get('proc_id')
     prog = kwargs.get('prog')
+    # First drop.
     if len(paired_list) == 0:
         logging.info(f'Proc-{proc_id}|[{prog}]|[ No paired ]')
         return deduplicate_meta_table
-
+    # Step.1 Make the image name and all [mask, plaque] mapping relationship collections.
     for pack in paired_list:
-        image_path = pack['image']
-        image_path_as_key = re.split(r'[/\\]', _pop_head_slash(image_path))
-        if repeat_map.get(image_path_as_key) is None:
-            repeat_map[image_path_as_key] = list()
-        repeat_map[image_path_as_key].append(pack)
+        image_path = _pop_head_slash(pack.image)
+        # Checking current image_path_as_key exist.
+        if repeat_map_image_path2pack_list.get(image_path) is None:
+            repeat_map_image_path2pack_list[image_path] = list()
+        # Checking done.
+        repeat_map_image_path2pack_list[image_path].append(pack)
+        pass
+    # Step.1 Done.
     merge_getter: itemgetter = itemgetter(1, 3, 4)
-    for image_name, pack_list in repeat_map.items():
+    # Step.2 Try to merge all of not unique mapping relationship.
+    for image_name_cursor, pack_list in repeat_map_image_path2pack_list.items():
         if len(pack_list) == 1:
             deduplicate_meta_table.append(pack_list[0])
             continue
-        logging.info(f'Proc-{proc_id}|[{prog}]|[ INFO ]|Pair repeat: {os.path.join(*image_name)}')
-        p0 = pack_list[0]
-        pre_union_label_path = _pop_head_slash(p0.get('label', p0.get('mask')))
+        logging.info(f'Proc-{proc_id}|[{prog}]|[ INFO ]|Pair repeat: {os.path.join(image_name_cursor)}')
+        sample_pack: 'SegmentMetaPack' = pack_list[0]
+        pre_union_label_path = _pop_head_slash(sample_pack.mask)
         union_label_path = os.path.join(args.root, pre_union_label_path)
         union_label = _load_nii_gz(union_label_path)
-        all_plq = [_load_nii_gz(os.path.join(args.root, _pop_head_slash(_pack.get('plaque', '_'))), union_label) for
-                   _pack in pack_list]
-        bg = torch.zeros_like(union_label)
-        # image_cutoff = re.split(r'[/\\]', _pop_head_slash(p0['image']))
-        image_cutoff = image_name.copy()
-        img_pid, uid, cp = merge_getter(image_cutoff)
+
+        all_plq = [_load_nii_gz(os.path.join(args.root, _pop_head_slash(_pack.plaque)), union_label) for
+                   _pack in filter(lambda __pack: __pack.plaque is not None, pack_list)]
+        all_details: list[Detail] = list()
+        for _pack in pack_list:
+            all_details.extend(getattr(_pack, 'details', list()))
+        all_details = list(set(all_details))
+        newest_union_plq = torch.zeros_like(union_label)
+        cursor_image_name_comp: list[str] = re.split(r'[/\\]', image_name_cursor)
+        img_pid, uid, cp = merge_getter(cursor_image_name_comp)
         merge_label_dir = os.path.join(args.mask_dir, img_pid, uid, str(cp))
 
         for plq in all_plq:
             union_label[plq == 1] = 10
-            bg[plq == 1] = 1
+            newest_union_plq[plq == 1] = 1
         try:
             saver(union_label, union_label.meta, filename=os.path.join(args.root, merge_label_dir, 'merge_union_label'))
-            saver(bg, union_label.meta, filename=os.path.join(args.root, merge_label_dir, 'merge_plaque'))
+            saver(newest_union_plq, union_label.meta, filename=os.path.join(args.root, merge_label_dir, 'merge_plaque'))
         except Exception as e:
-            print(image_name)
-            print(merge_getter(image_cutoff))
-        deduplicate_meta_table.append({
-            'image': os.path.join(*image_name),
+            print(image_name_cursor)
+            print(merge_getter(cursor_image_name_comp))
+        deduplicate_pack = {
+            'image': os.path.join(*image_name_cursor),
             'mask': os.path.join(merge_label_dir, 'merge_union_label.nii.gz'),
             'plaque': os.path.join(merge_label_dir, 'merge_plaque.nii.gz'),
             'cp': cp,
             'uid': uid,
             'pid': img_pid
-            # 'snum': p0['snum'],
-        })
+        }
+        if len(all_details) > 0:
+            deduplicate_pack['details'] = [detail.__dict__ for detail in all_details]
+        deduplicate_meta_table.append(deduplicate_pack)
 
     return deduplicate_meta_table
 
@@ -128,13 +142,13 @@ def clean_all_merge_sample(args):
         files = list(filter(lambda x: x.endswith('.nii.gz') and 'merge' in x, files))
         if len(dirs) < 2 and len(files) != 2:
             continue
-        os.remove(os.path.join(roots, 'merge_plaque.nii.gz'))
-        os.remove(os.path.join(roots, 'merge_plaque.nii.gz.nii.gz'))
-        os.remove(os.path.join(roots, 'merge_union_label.nii.gz'))
-        os.remove(os.path.join(roots, 'merge_union_label.nii.gz.nii.gz'))
+        delete_file(os.path.join(roots, 'merge_plaque.nii.gz'))
+        delete_file(os.path.join(roots, 'merge_plaque.nii.gz.nii.gz'))
+        delete_file(os.path.join(roots, 'merge_union_label.nii.gz'))
+        delete_file(os.path.join(roots, 'merge_union_label.nii.gz.nii.gz'))
 
 
-def main(args):
+def main(args: argparse.Namespace):
     all_patient_dir = get_patient_dir(args)
     clean_all_merge_sample(args)
     if args.just_clean_merge_mask:
@@ -150,13 +164,14 @@ def main(args):
         merge_list.extend(worker_list)
     write_content(os.path.join(args.root, args.meta_dir, 'Deduplicate_PLQ_Table.json'), merge_list, as_json=True)
 
-
-
     pass
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='This scripts is using to merge that plaque is storage in multi-file')
+    parser = argparse.ArgumentParser(
+        description='This scripts is using to merge that plaque is storage in multi-file, it will store all of meta pack into one json file.')
+    parser.add_argument('--config', type=str, required=False,
+                        help='If don\'t want apply argument, you could write all setting into this json file.')
     parser.add_argument('--root', type=str,
                         help='The root directory of `image_dir`, `mask_dir`, like: `/<path>/NiiTaipei', )
     parser.add_argument('--image_dir', type=str,
@@ -172,4 +187,4 @@ if __name__ == '__main__':
 
     parser.add_argument('--num_worker', type=int, default=1, help='number of worker process')
     parser.add_argument('--just_clean_merge_mask', action='store_true', default=False)
-    main(parser.parse_args())
+    main(make_final_namespace(parser.parse_args()))
