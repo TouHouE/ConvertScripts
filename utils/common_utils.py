@@ -4,12 +4,15 @@ import argparse
 import datetime as dt
 from typing import Dict, List, Any, Callable
 from constant import STATUS_LEN
-from utils import hooker
+import os
+import logging
 
 import numpy as np
 from sklearn.model_selection import train_test_split, KFold
 
-__all__ = ['is_numerical', 'time2str', 'print_info', 'write_content', 'make_vista_style_table', 'load_json']
+from utils import hooker
+
+__all__ = ['is_numerical', 'time2str', 'print_info', 'write_content', 'make_vista_style_table', 'load_json', 'make_final_namespace', 'delete_file']
 
 
 def is_numerical(foo: str):
@@ -122,5 +125,24 @@ def make_final_namespace(args: argparse.Namespace) -> argparse.Namespace:
     return args
 
 
+def delete_file(dst_file: str | os.PathLike) -> int:
+    """
 
+    Args:
+        dst_file:
+
+    Returns(int): using an integer to describe the status of delete `dst_file`.
+    0 : OK
+    -1: the `dst_file` does not exist(or already deleted).
+    -2: Unexpected error.
+    """
+    try:
+        os.remove(dst_file)
+        status = 0
+    except FileNotFoundError:
+        logging.error(f'{dst_file} does not exist')
+        status = -1
+    except Exception:
+        status = -2
+    return status
 
