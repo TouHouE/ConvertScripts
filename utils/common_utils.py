@@ -109,4 +109,18 @@ def load_json(path):
         return json.load(jin)
 
 
+def make_final_namespace(args: argparse.Namespace) -> argparse.Namespace:
+    if (config_path := getattr(args, 'config', None)) is None:
+        return args
+
+    config = load_json(config_path)
+
+    for key, value in config.items():
+        if getattr(args, key, None) is not None:
+            continue
+        setattr(args, key, value)
+    return args
+
+
+
 
