@@ -70,7 +70,9 @@ def pack_worker(pack_list: list[dict], partitions: Partition) -> list[dict]:
         current_isp_parent: str | os.PathLike = isp_name2isp_path[isp_folder_name]
         all_isp_file = os.listdir(current_isp_parent)
         for isp_file_name in all_isp_file:
-            isp = pyd.dcmread(os.path.join(current_isp_parent, isp_file_name))
+            isp = ComU.load_dcm(os.path.join(current_isp_parent, isp_file_name))
+            if isp is None:
+                continue
             if isp.ImageType[-1] != 'PATH':
                 continue
             plq_list: list[list[np.ndarray, str]] = IHelper.reconstruct_plaque(isp, host_ct, return_plq_name=True)
