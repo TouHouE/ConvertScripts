@@ -57,11 +57,13 @@ def pack_worker(pack_list: list[dict], partitions: Partition) -> list[dict]:
         pid = pack['pid']
         cp = str(pack['cp'])
         uid = pack['uid']
+        if 'plaque' not in pack.keys():
+            continue
+
         plq_dir_path = os.path.join(partitions.args.root, partitions.args.mask_dir, pid, uid, cp, 'details')
         os.makedirs(plq_dir_path, exist_ok=True)
         pack['details'] = list()
-        if 'plaque' not in pack.keys():
-            continue
+
         host_ct = nib.load(os.path.join(partitions.args.root, pack['image'].lstrip('/').lstrip('\\')))
         mask_name_series: list[str] = re.split(r'[/\\]', pack['plaque'])
         isp_folder_name: str = mask_name_series[-2]

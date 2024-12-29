@@ -64,11 +64,11 @@ def patient_worker(pid, loader: Callable, saver: Callable, args, **kwargs):
             continue
         logging.info(f'Proc-{proc_id}|[{prog}]|[ INFO ]|Pair repeat: {os.path.join(image_name_cursor)}')
         sample_pack: 'SegmentMetaPack' = pack_list[0]
-        pre_union_label_path = _pop_head_slash(sample_pack.mask)
+        pre_union_label_path = sample_pack.mask.replace('\\', '/').lstrip('/')
         union_label_path = os.path.join(args.root, pre_union_label_path)
         union_label = _load_nii_gz(union_label_path)
 
-        all_plq = [_load_nii_gz(os.path.join(args.root, _pop_head_slash(_pack.plaque)), union_label) for
+        all_plq = [_load_nii_gz(os.path.join(args.root, _pack.plaque.replace('\\', '/').lstrip('/')), union_label) for
                    _pack in filter(lambda __pack: __pack.plaque is not None, pack_list)]
         all_details: list[Detail] = list()
         for _pack in pack_list:
@@ -89,9 +89,9 @@ def patient_worker(pid, loader: Callable, saver: Callable, args, **kwargs):
             print(image_name_cursor)
             print(merge_getter(cursor_image_name_comp))
         deduplicate_pack = {
-            'image': os.path.join(*image_name_cursor),
-            'mask': os.path.join(merge_label_dir, 'merge_union_label.nii.gz'),
-            'plaque': os.path.join(merge_label_dir, 'merge_plaque.nii.gz'),
+            'image': os.path.join(*image_name_cursor).replace('\\', '/').lstrip('/'),
+            'mask': os.path.join(merge_label_dir, 'merge_union_label.nii.gz').replace('\\', '/').lstrip('/'),
+            'plaque': os.path.join(merge_label_dir, 'merge_plaque.nii.gz').replace('\\', '/').lstrip('/'),
             'cp': cp,
             'uid': uid,
             'pid': img_pid
