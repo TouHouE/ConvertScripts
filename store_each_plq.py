@@ -51,17 +51,17 @@ def pack_worker(pack_list: list[dict], partitions: Partition) -> list[dict]:
     isp_name2isp_path = _mask_isp_dir_linked(partitions.args.pid)
     total = len(pack_list)
     for prog, pack in enumerate(pack_list):
-        # print(pack)
         ComU.print_info('Start', {'pack_id': prog, 'total_pack': total}, partitions.args)
-        print(type(pack))
         pid = pack['pid']
         cp = str(pack['cp'])
         uid = pack['uid']
-        if 'plaque' not in pack.keys():
-            continue
 
         plq_dir_path = os.path.join(partitions.args.root, partitions.args.mask_dir, pid, uid, cp, 'details')
-        os.makedirs(plq_dir_path, exist_ok=True)
+        has_plq: bool = 'plaque' not in pack.keys()
+        if has_plq:
+            ComU.print_info("NO PLQ", f'Pack-{prog} no plaque, only store centerline', partitions.args)
+        else:
+            os.makedirs(plq_dir_path, exist_ok=True)
         pack['details'] = list()
 
         host_ct = nib.load(os.path.join(partitions.args.root, pack['image'].replace('\\', '/').lstrip('/')))
@@ -85,6 +85,12 @@ def pack_worker(pack_list: list[dict], partitions: Partition) -> list[dict]:
                 pack['details'].append({
                     'path': dst_path.lstrip(partitions.args.root),
                     'desc': plq_pack[1],
+                    'vessel': centerline_store_path.lstrip(partitions.args.root)
+                })
+            if not has_plq: # If no plq in current packed, we still can try to record all centerline data.
+                pack['details'].append({
+                    'path': '',
+                    'desc': vessel_name,
                     'vessel': centerline_store_path.lstrip(partitions.args.root)
                 })
 
