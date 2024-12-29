@@ -64,7 +64,7 @@ def pack_worker(pack_list: list[dict], partitions: Partition) -> list[dict]:
         os.makedirs(plq_dir_path, exist_ok=True)
         pack['details'] = list()
 
-        host_ct = nib.load(os.path.join(partitions.args.root, pack['image'].lstrip('/').lstrip('\\')))
+        host_ct = nib.load(os.path.join(partitions.args.root, pack['image'].replace('\\', '/').lstrip('/')))
         mask_name_series: list[str] = re.split(r'[/\\]', pack['plaque'])
         isp_folder_name: str = mask_name_series[-2]
         current_isp_parent: str | os.PathLike = isp_name2isp_path[isp_folder_name]
