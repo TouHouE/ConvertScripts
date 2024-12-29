@@ -57,11 +57,12 @@ def pack_worker(pack_list: list[dict], partitions: Partition) -> list[dict]:
         uid = pack['uid']
 
         plq_dir_path = os.path.join(partitions.args.root, partitions.args.mask_dir, pid, uid, cp, 'details')
+        os.makedirs(plq_dir_path, exist_ok=True)
         has_plq: bool = 'plaque' not in pack.keys()
         if has_plq:
             ComU.print_info("NO PLQ", f'Pack-{prog} no plaque, only store centerline', partitions.args)
-        else:
-            os.makedirs(plq_dir_path, exist_ok=True)
+        # else:
+
         pack['details'] = list()
 
         host_ct = nib.load(os.path.join(partitions.args.root, pack['image'].replace('\\', '/').lstrip('/')))
@@ -129,7 +130,9 @@ def patient_worker(partition: Partition):
             status = 'Done'
         except Exception as e:
             print(e.args)
-            print(tb.format_exc())
+            print((content := tb.format_exc()))
+            os.makedirs('./err_msg', exist_ok=True)
+            ComU.write_content(f'./err_msg/{args.pid}.txt', content, as_json=False)
             status = 'Failed'
         ComU.print_info(status, '', args=args)
 
