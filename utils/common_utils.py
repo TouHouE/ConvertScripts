@@ -9,10 +9,11 @@ import logging
 
 import numpy as np
 from sklearn.model_selection import train_test_split, KFold
+import pydicom as pyd
 
 from utils import hooker
 
-__all__ = ['is_numerical', 'time2str', 'print_info', 'write_content', 'make_vista_style_table', 'load_json', 'make_final_namespace', 'delete_file']
+__all__ = ['is_numerical', 'time2str', 'print_info', 'write_content', 'make_vista_style_table', 'load_json', 'load_dcm', 'make_final_namespace', 'delete_file']
 
 
 def is_numerical(foo: str):
@@ -110,6 +111,14 @@ def make_vista_style_table(raw_table, args):
 def load_json(path):
     with open(path, 'r') as jin:
         return json.load(jin)
+
+
+def load_dcm(path, **kwargs) -> pyd.FileDataset | None:
+
+    try:
+        return pyd.dcmread(path, **kwargs)
+    except pyd.filereader.InvalidDicomError:
+        return None
 
 
 def make_final_namespace(args: argparse.Namespace) -> argparse.Namespace:
