@@ -128,7 +128,7 @@ def patient_worker(partition: Partition):
 def main(args: argparse.Namespace):
     num_worker = args.num_worker
     meta_path = os.path.join(args.root, args.meta_dir)
-    all_meta_file = list(filter(lambda x: x.endswith('.json'), os.listdir(meta_path)))
+    all_meta_file = list(filter(lambda x: re.fullmatch('[0-9]{4}\.json', x) != None, os.listdir(meta_path)))
     if num_worker > len(all_meta_file):
         num_worker = len(all_meta_file)
     partition_collections = np.array_split(all_meta_file, num_worker)
