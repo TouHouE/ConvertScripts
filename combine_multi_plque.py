@@ -40,7 +40,7 @@ def patient_worker(pid, loader: Callable, saver: Callable, args, **kwargs):
     paired_list: list[SegmentMetaPack] = [SegmentMetaPack(**_pack) for _pack in
                                           load_json(os.path.join(args.root, args.meta_dir, pid))]
     repeat_map_image_path2pack_list: MutableMapping[str, list[SegmentMetaPack]] = dict()
-    deduplicate_meta_table = list()
+    deduplicate_meta_table: list[str] = list()
     proc_id = kwargs.get('proc_id')
     prog = kwargs.get('prog')
     # First drop.
@@ -61,7 +61,7 @@ def patient_worker(pid, loader: Callable, saver: Callable, args, **kwargs):
     # Step.2 Try to merge all of not unique mapping relationship.
     for image_name_cursor, pack_list in repeat_map_image_path2pack_list.items():
         if len(pack_list) == 1:
-            deduplicate_meta_table.append(pack_list[0])
+            deduplicate_meta_table.append(pack_list[0].__dict__)
             continue
         logging.info(f'Proc-{proc_id}|[{prog}]|[ INFO ]|Pair repeat: {os.path.join(image_name_cursor)}')
         sample_pack: 'SegmentMetaPack' = pack_list[0]
@@ -90,7 +90,7 @@ def patient_worker(pid, loader: Callable, saver: Callable, args, **kwargs):
             print(image_name_cursor)
             print(merge_getter(cursor_image_name_comp))
         deduplicate_pack = {
-            'image': os.path.join(*image_name_cursor).replace('\\', '/').lstrip('/'),
+            'image': os.path.join(image_name_cursor).replace('\\', '/').lstrip('/'),
             'mask': os.path.join(merge_label_dir, 'merge_union_label.nii.gz').replace('\\', '/').lstrip('/'),
             'plaque': os.path.join(merge_label_dir, 'merge_plaque.nii.gz').replace('\\', '/').lstrip('/'),
             'cp': cp,
@@ -168,7 +168,7 @@ def main(args: argparse.Namespace):
     partitions = [Partition(proc_id=proc_id, data=_data, args=args) for proc_id, _data in enumerate(mapping_patient)]
 
     with mp.Pool(args.num_worker) as pooler:
-        worker_collections = pooler.map(worker, partitions)
+        worker_collections:list[list[dict]] = pooler.map(worker, partitions)
     merge_list = list()
     for worker_list in worker_collections:
         merge_list.extend(worker_list)
