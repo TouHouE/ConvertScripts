@@ -3,6 +3,7 @@ import argparse
 import multiprocessing as mp
 import logging
 import shutil
+import traceback as tb
 
 logging.basicConfig(level=logging.INFO, format='[%(asctime)s %(name)s %(levelname)s] %(message)s')
 import os
@@ -117,8 +118,16 @@ def worker(partitions: Partition):
     for i, patient_id in enumerate(data):
         prog = f'{i}/{total}'
         logging.info(f'Proc-{proc_id}|[{prog}]|[ Start ][{patient_id}]')
-        final_table.extend(patient_worker(patient_id, loader, saver, args, prog=prog, proc_id=proc_id))
-        logging.info(f'Proc-{proc_id}|[{prog}]|[ Next ]')
+        try:
+            final_table.extend(patient_worker(patient_id, loader, saver, args, prog=prog, proc_id=proc_id))
+            status = 'Next'
+        except Exception as e:
+            status = 'Failed'
+            with open(f'./err_logs/merge/{patient_id}.txt', 'w+') as writer:
+                writer.write((err_detail := tb.format_exc()))
+            print(e.args[0], '\n', err_detail)
+
+        logging.info(f'Proc-{proc_id}|[{prog}]|[ {status} ]')
     logging.info(f'Proc-{proc_id}|[ Process Done ]')
     return final_table
 
