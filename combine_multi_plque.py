@@ -123,6 +123,7 @@ def worker(partitions: Partition):
             status = 'Next'
         except Exception as e:
             status = 'Failed'
+            os.makedirs('./err_logs/merge', exist_ok=True)
             with open(f'./err_logs/merge/{patient_id}.txt', 'w+') as writer:
                 writer.write((err_detail := tb.format_exc()))
             print(e.args[0], '\n', err_detail)
