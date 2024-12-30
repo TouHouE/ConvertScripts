@@ -1,6 +1,7 @@
 import json
 import argparse
 import multiprocessing as mp
+import dataclasses as DC
 from dataclasses import dataclass, field
 from typing import Iterable, List, Optional, Sequence, Union, TypeVar, Generic
 import os
@@ -62,26 +63,44 @@ class IspCtPair:
     mask: str
 
 
+class DictableDataClass:
+    def __dict__(self):
+        result = dict()
+        for key, value in DC.asdict(self).items():
+            if DC.is_dataclass(value):
+                value = dict(value)
+            result[key] = value
+        return result
+
+
 @dataclass(frozen=True, eq=True, order=True)
-class Detail:
+class Detail(DictableDataClass):
     path: str | os.PathLike = field(hash=True)
     vessel: str | os.PathLike = field(hash=True)
     desc: str = field(hash=True)
 
+    @property
+    def json(self):
+        return self.__dict__()
+
 
 @dataclass
-class SegmentMetaPack:
-    cp: float | int
-    pid: str
-    uid: str
-    image: str | os.PathLike
+class SegmentMetaPack(DictableDataClass):
+    cp: float | int = field(hash=True)
+    pid: str = field(hash=True)
+    uid: str = field(hash=True)
+    image: str | os.PathLike = field(hash=True)
     mask: str | os.PathLike
-    plaque: Optional[str | os.PathLike] = field(default=None)
-    details: Optional[Sequence[Detail | dict]] = field(default=None)
+    plaque: Optional[str | os.PathLike] = field(default=None, hash=True)
+    details: Optional[Sequence[Detail | dict]] = field(default=None, hash=True)
 
     def __post_init__(self):
         if self.details is not None:
             self.details = tuple(sorted([Detail(**_detail) for _detail in self.details]))
+
+    @property
+    def json(self):
+        return self.__dict__()
 
 
 class DebugCard:

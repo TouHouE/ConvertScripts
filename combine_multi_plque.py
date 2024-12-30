@@ -1,4 +1,4 @@
-from typing import Callable, MutableMapping, Mapping, Optional
+from typing import Callable, MutableMapping, Mapping, Optional, Any
 import argparse
 import multiprocessing as mp
 import logging
@@ -21,7 +21,7 @@ from utils.common_utils import write_content, load_json, make_final_namespace, d
 from utils import hooker
 
 
-def patient_worker(pid, loader: Callable, saver: Callable, args, **kwargs):
+def patient_worker(pid, loader: Callable, saver: Callable, args, **kwargs) -> list[dict[str, Any]]:
     def _load_nii_gz(_path: str | os.PathLike,
                      _union_label: Optional[MetaTensor | torch.Tensor] = None) -> MetaTensor | torch.Tensor | None:
         if os.path.exists(_path):
@@ -40,7 +40,7 @@ def patient_worker(pid, loader: Callable, saver: Callable, args, **kwargs):
     paired_list: list[SegmentMetaPack] = [SegmentMetaPack(**_pack) for _pack in
                                           load_json(os.path.join(args.root, args.meta_dir, pid))]
     repeat_map_image_path2pack_list: MutableMapping[str, list[SegmentMetaPack]] = dict()
-    deduplicate_meta_table: list[str] = list()
+    deduplicate_meta_table: list[dict[str, Any]] = list()
     proc_id = kwargs.get('proc_id')
     prog = kwargs.get('prog')
     # First drop.
@@ -61,7 +61,7 @@ def patient_worker(pid, loader: Callable, saver: Callable, args, **kwargs):
     # Step.2 Try to merge all of not unique mapping relationship.
     for image_name_cursor, pack_list in repeat_map_image_path2pack_list.items():
         if len(pack_list) == 1:
-            deduplicate_meta_table.append(pack_list[0].__dict__)
+            deduplicate_meta_table.append(pack_list[0].json)
             continue
         logging.info(f'Proc-{proc_id}|[{prog}]|[ INFO ]|Pair repeat: {os.path.join(image_name_cursor)}')
         sample_pack: 'SegmentMetaPack' = pack_list[0]
@@ -85,20 +85,22 @@ def patient_worker(pid, loader: Callable, saver: Callable, args, **kwargs):
             newest_union_plq[plq == 1] = 1
         try:
             saver(union_label, union_label.meta, filename=os.path.join(args.root, merge_label_dir, 'merge_union_label'))
-            saver(newest_union_plq, union_label.meta, filename=os.path.join(args.root, merge_label_dir, 'merge_plaque'))
+            if newest_union_plq.sum() > 1:
+                saver(newest_union_plq, union_label.meta, filename=os.path.join(args.root, merge_label_dir, 'merge_plaque'))
         except Exception as e:
             print(image_name_cursor)
             print(merge_getter(cursor_image_name_comp))
         deduplicate_pack = {
             'image': os.path.join(image_name_cursor).replace('\\', '/').lstrip('/'),
             'mask': os.path.join(merge_label_dir, 'merge_union_label.nii.gz').replace('\\', '/').lstrip('/'),
-            'plaque': os.path.join(merge_label_dir, 'merge_plaque.nii.gz').replace('\\', '/').lstrip('/'),
             'cp': cp,
             'uid': uid,
             'pid': img_pid
         }
         if len(all_details) > 0:
-            deduplicate_pack['details'] = [detail.__dict__ for detail in all_details]
+            deduplicate_pack['details'] = [detail.json for detail in all_details]
+        if newest_union_plq.sum() > 1:
+            deduplicate_pack['plaque'] = os.path.join(merge_label_dir, 'merge_plaque.nii.gz').replace('\\', '/').lstrip('/'),
         deduplicate_meta_table.append(deduplicate_pack)
 
     return deduplicate_meta_table
@@ -113,11 +115,11 @@ def worker(partitions: Partition):
     ])
     saver = MT.SaveImage(output_postfix='', separate_folder=False, print_log=False)
     total = len(data)
-    final_table = list()
+    final_table: list[dict] = list()
 
     for i, patient_id in enumerate(data):
         prog = f'{i}/{total}'
-        logging.info(f'Proc-{proc_id}|[{prog}]|[ Start ][{patient_id}]')
+        logging.info(f'Proc-{proc_id}|[{prog}]|[ Start ][{patient_id.rstrip(".json")}]')
         try:
             final_table.extend(patient_worker(patient_id, loader, saver, args, prog=prog, proc_id=proc_id))
             status = 'Next'
@@ -128,7 +130,7 @@ def worker(partitions: Partition):
                 writer.write((err_detail := tb.format_exc()))
             print(e.args[0], '\n', err_detail)
 
-        logging.info(f'Proc-{proc_id}|[{prog}]|[ {status} ]')
+        logging.info(f'Proc-{proc_id}|[{prog}]|[ {status} ][{patient_id.rstrip(".json")}]')
     logging.info(f'Proc-{proc_id}|[ Process Done ]')
     return final_table
 
