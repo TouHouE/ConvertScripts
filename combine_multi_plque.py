@@ -59,25 +59,26 @@ def patient_worker(pid, loader: Callable, saver: Callable, args, **kwargs) -> li
     # Step.1 Done.
     merge_getter: itemgetter = itemgetter(1, 3, 4)
     # Step.2 Try to merge all of not unique mapping relationship.
-    for image_name_cursor, pack_list in repeat_map_image_path2pack_list.items():
-        if len(pack_list) == 1:
-            deduplicate_meta_table.append(pack_list[0].json)
+    for image_name_cursor, pack_list_with_same_image in repeat_map_image_path2pack_list.items():
+        if len(pack_list_with_same_image) == 1:
+            deduplicate_meta_table.append(pack_list_with_same_image[0].json)
             continue
         logging.info(f'Proc-{proc_id}|[{prog}]|[ INFO ]|Pair repeat: {os.path.join(image_name_cursor)}')
-        sample_pack: 'SegmentMetaPack' = pack_list[0]
+        sample_pack: 'SegmentMetaPack' = pack_list_with_same_image[0]
         pre_union_label_path = sample_pack.mask.replace('\\', '/').lstrip('/')
         union_label_path = os.path.join(args.root, pre_union_label_path)
         union_label = _load_nii_gz(union_label_path)
 
         all_plq = [_load_nii_gz(os.path.join(args.root, _pack.plaque.replace('\\', '/').lstrip('/')), union_label) for
-                   _pack in filter(lambda __pack: __pack.plaque is not None, pack_list)]
+                   _pack in filter(lambda __pack: __pack.plaque is not None, pack_list_with_same_image)]
         all_details: list[Detail] = list()
-        for _pack in pack_list:
+        for _pack in pack_list_with_same_image:
             all_details.extend(getattr(_pack, 'details', list()))
         all_details = list(set(all_details))
         newest_union_plq = torch.zeros_like(union_label)
         cursor_image_name_comp: list[str] = re.split(r'[/\\]', image_name_cursor)
         img_pid, uid, cp = merge_getter(cursor_image_name_comp)
+        # Example: mask/0420/1.2.840.113654.2.70.1.339615992711065096155571489984936885181/76.0
         merge_label_dir = os.path.join(args.mask_dir, img_pid, uid, str(cp))
 
         for plq in all_plq:

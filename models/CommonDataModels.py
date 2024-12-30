@@ -67,6 +67,8 @@ class DictableDataClass:
     def __dict__(self):
         result = dict()
         for key, value in DC.asdict(self).items():
+            if value is None:
+                continue
             if DC.is_dataclass(value):
                 value = dict(value)
             result[key] = value
