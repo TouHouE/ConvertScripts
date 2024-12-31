@@ -32,7 +32,7 @@ class DicomCollector:
         self.cp = CUtils.find_cp(dcm)
         status, self.uid = CUtils.get_tag(dcm, (0x0020, 0x000e))
         status, self.stime = CUtils.get_tag(dcm, (0x0008, 0x0030))
-        status, self.snum = CUtils.get_tag(dcm, (0x0020, 0x0011), None)
+        status, self.snum = CUtils.get_tag(dcm, (0x0020, 0x0011), 0)
         status, self.inum = CUtils.get_tag(dcm, (0x0020, 0x0013))
         status, self.pid = CUtils.get_tag(dcm, (0x0010, 0x0020))
 
@@ -127,7 +127,9 @@ class NiftiHandler:
                 fout.write(traceback.format_exc())
 
     def store_nifit(self) -> None:
+
         CUtils.commandline(self.out_dir, self.buf_dir, dcm2niix_path=self.dcm2niix)
+
         target = list(filter(lambda x: not x.endswith('.json'), os.listdir(self.out_dir)))[0]
         self.abs_path = f'{self.out_dir}/{target}'
         self.nii_size = os.stat(self.abs_path).st_size
