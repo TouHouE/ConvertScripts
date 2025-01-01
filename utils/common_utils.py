@@ -102,11 +102,12 @@ def make_vista_style_table(raw_table, args):
     train_list = list()
     append_train: Callable = train_list.append
 
-    for current_fold, (_, val_index) in enumerate(folder.split(train_ids_list)):
-        train_pack = raw_table['data'][val_index]
-        train_pack['fold'] = current_fold
-        train_pack['label'] = train_pack['mask']
-        append_train(train_pack)
+    for current_fold, (_, val_index_seq) in enumerate(folder.split(train_ids_list)):
+        for val_index in val_index_seq:
+            train_pack = raw_table['data'][val_index]
+            train_pack['fold'] = current_fold
+            train_pack['label'] = train_pack['mask']
+            append_train(train_pack)
     vista_table = dict(label=raw_table['name'], training=train_list, testing=test_list)
     return vista_table
 
