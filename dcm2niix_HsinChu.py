@@ -10,6 +10,8 @@ import datetime as dt
 import multiprocessing as mp
 from copy import deepcopy
 from typing import List, Dict, Any, Iterable
+import logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 
 import numpy as np
 import pandas as pd
@@ -76,13 +78,15 @@ def collect_patient_dcm(
     total_dcm: List[models.hsinchu.DicomCollector] = []
     single_patient_path = str(single_patient_path)
     for roots, dirs, files in os.walk(single_patient_path, topdown=True):
-        files: List[str] = list(filter(lambda x: find_legal_dcm(x), files))
+        # files: List[str] = list(filter(lambda x: find_legal_dcm(x), files))
+        files = list(filter(lambda f: f.endswith(".dcm"), files))
         if len(files) == 0:
             continue
+        # print(files)
 
         for name in files:
-            dcm_file: models.hsinchu.DicomCollector = models.hsinchu.DicomCollector(f'{roots}/{name}')
-
+            dcm_file: models.hsinchu.DicomCollector = models.hsinchu.DicomCollector(os.path.join(roots, name))
+            # print(dcm_file)
             if dcm_file not in total_dcm:   # drop up the duplicate collector
                 total_dcm.append(dcm_file)
     return total_dcm
@@ -136,11 +140,17 @@ def resource_allocate_main(n_proc: int, out_dir, buf_dir, err_dir, args):
 
     for task_root in stack:
         suffix = re.split('[/\\\]', task_root)[-1]
+        raw_patient_collections = os.listdir(task_root)
+        if args.single_patient_dir is not None:
+            raw_patient_collections = list(set(raw_patient_collections) - {args.single_patient_dir})
+        if len(raw_patient_collections) == 0:
+            continue
         all_patient = list(filter(lambda x: os.path.isdir(x), [f'{task_root}/{pid}' for pid in os.listdir(task_root)]))
+
         segment_patient = np.array_split(all_patient, n_proc)
-        odir = f'{out_dir}/{suffix}'
-        bdir = f'{buf_dir}/{suffix}'
-        edir = f'{err_dir}/{suffix}'
+        odir = os.path.join(out_dir, suffix)
+        bdir = os.path.join(buf_dir, suffix)
+        edir = os.path.join(err_dir, suffix)
         for _dir in [odir, bdir, edir]:
             os.makedirs(_dir, exist_ok=True)
 
@@ -169,7 +179,9 @@ def main(args):
 if __name__ == '__main__':
     from argparse import ArgumentParser
     parser = ArgumentParser()
+    parser.add_argument('--config', type=str, required=False)
     parser.add_argument('--data_root', type=str)
+    parser.add_argument('--single_patient_dir', type=str, required=False)
     parser.add_argument('--num_workers', type=int, default=1)
     parser.add_argument('--worker_ratio', type=float, default=None)
     # parser.add_argument('--dst_root', type=str, default='./NiiHsinChu')
@@ -177,7 +189,7 @@ if __name__ == '__main__':
     parser.add_argument('--buf_dir', default='./NiiHsinChu/buf')
     parser.add_argument('--err_dir', default='./NiiHsinChu/err')
     parser.add_argument('--dcm2niix', default='./lib/dcm2niix.exe')
-    gargs = parser.parse_args()
+    gargs: argparse.Namespace = ComUtils.make_final_namespace(parser.parse_args())
     print(f'Argument:\n{gargs}')
     main(gargs)
     print(f'Script Done.')
