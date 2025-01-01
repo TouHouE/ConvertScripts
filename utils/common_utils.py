@@ -93,7 +93,10 @@ def make_vista_style_table(raw_table, args):
     test_ratio: float = test_ratio if 0 <= (test_ratio := args.test_ratio) < 1 else test_ratio / len(raw_table['data'])
 
     ids_list = np.arange(len(raw_table['data']))
-    train_ids_list, test_ids_list = train_test_split(ids_list, test_ratio)
+    try:
+        train_ids_list, test_ids_list = train_test_split(ids_list, test_ratio)
+    except TypeError:
+        train_ids_list, test_ids_list = train_test_split(ids_list, test_size=test_ratio)
     folder = KFold(num_fold, shuffle=True, random_state=114514)
     test_list = [_test_pack_mapper(raw_table['data'][test_index]) for test_index in test_ids_list]
     train_list = list()
