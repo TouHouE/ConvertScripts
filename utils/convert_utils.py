@@ -196,6 +196,9 @@ def legal_ct_dicom_path(path: str) -> bool:
 
 
 def legal_patient_folder(path: str | List[Union[str, PatientId]], ignore_condition: Optional[List[PatientId]] = None) -> bool:
+    """
+        This function is using when program try to load whole patient
+    """
     if isinstance(path, str):
         patient_name: str = re.split('[/\\\]', path)[-1]
     else:
@@ -209,26 +212,43 @@ def legal_patient_folder(path: str | List[Union[str, PatientId]], ignore_conditi
     return is_dir and not is_ignore_patient
 
 
-def unzip(args, folder, member) -> str | List[str]:
+def legal_patient_zip(path: str | List[str], ignore_condition: Optional[List[PatientId]] = None) -> bool:
+    if isinstance(path, str):
+        patient_name: str = re.split('[/\\\]', path)[-1]
+    else:
+        patient_name: str = path[-1]
+        path = '/'.join(path)
+    is_zip = os.path.isfile(path)
+    is_ignore_patient = False
+    if ignore_condition is not None:
+        is_ignore_patient = patient_name in ignore_condition
+    return is_zip and not is_ignore_patient
+
+
+def unzip(args, member) -> str | List[str]:
     """
         Return a list of error message if got error, otherwise, the return will be the patient id
     :param args:
     :param folder:
-    :param member:
+    :param member:  patient_name.zip
     Returns:
 
     """
     patient_name = member.split('.')[0]
+    _root = getattr(args, 'unzip_buf_root', getattr(args, 'data_root'))
     try:
-        with zipfile.ZipFile(f'{args.data_root}/{folder}/{member}', 'r') as unzipper:
+        zip_path = os.path.join(args.data_root, member)
+        with zipfile.ZipFile(zip_path, 'r') as unzipper:
             top = unzipper.filelist[0]
             if top.filename == patient_name:
                 # This statement for if the patient folder already in *.zip
                 # Thus, I don't prepare a folder to store all CT-series
-                dst = f'{args.data_root}/{folder}'
+                # dst = f'{args.data_root}/{folder}'
+                dst = os.path.join(_root)
             else:
                 # This statement for if the patient folder not in the *.zip.
-                dst = f'{args.data_root}/{folder}/{patient_name}'
+                # dst = f'{args.data_root}/{folder}/{patient_name}'
+                dst = os.path.join(_root, patient_name)
 
             unzipper.extractall(dst)
     except Exception as e:
@@ -290,6 +310,8 @@ def filter_legal_patient_folder(
     for x in os.listdir(args.data_root):
         if legal_patient_folder([args.data_root, x], ignore_condition):
             legal_patient_list.append(PatientId(x))
+        if legal_patient_zip([args.data_root, x], ignore_condition):
+            legal_patient_list.append(PatientId(x.split('.')[0]))
     return legal_patient_list
 
 
