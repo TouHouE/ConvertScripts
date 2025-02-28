@@ -189,7 +189,7 @@ def build_ct_isp_pair(
 
 
 def patient_proc(
-        pid: str, args: argparse.Namespace, ct_path_args: Optional[Dict[str, Any]] = None, isp_path_args=None
+        pid: str, args: argparse.Namespace, ct_path_args: Optional[Dict[str, Any]] = None, isp_path_args=None, unzip_root=None
 ) -> Tuple[List[IspCtPair], List[str]]:
     """
     Process single patient data and return
@@ -206,8 +206,10 @@ def patient_proc(
         ct_path_args = dict(output_dir=args.out_dir, buf_dir=args.buf_dir)
     if isp_path_args is None:
         isp_path_args = dict(output_dir=args.mask_dir)
-
-    ct_root = args.data_root
+    if unzip_root is None:
+        ct_root = args.data_root
+    else:
+        ct_root = unzip_root
     isp_root = args.isp_root
     # Start Loading all CT dicom file and ISP dicom file into program.
     ct_pack = build_ct_list(ct_root, pid, args=args, **ct_path_args)
@@ -275,6 +277,7 @@ def start_proc(partition: models.Partition) -> List[IspCtPair]:
 
     for pidx, pid in enumerate(pid_list):
         t0: dt.datetime = dt.datetime.now()
+        is_zip = False
         patient_progress: str = f'{pidx}/{n_pid}'
         setattr(args, 'patient_progress', patient_progress)
         setattr(args, 't0', t0)
@@ -283,7 +286,12 @@ def start_proc(partition: models.Partition) -> List[IspCtPair]:
         if os.path.exists((ppath := os.path.join(args.out_dir, pid))):
             # Previous remains data should be removed.
             ComUtils.print_info('Clean', f'Try to remove previous remain data: {ppath}', args)
-            shutil.rmtree(ppath)
+            shutil.rmtree(ppath)        
+        if os.path.exists((zip_path := os.path.join(args.data_root, f'{pid}.zip'))):
+            ComUtils.print_info('Unzip', f'{pid} is .zip file, try to unzip it.', args)
+            CUtils.unzip(args, args.data_root, zip_path)
+            is_zip = True
+
         try:
             patient_pack: Tuple[List[IspCtPair], List[str]] = patient_proc(pid, args)
             pid_result: List[IspCtPair] = WRAP_DATA(patient_pack)
@@ -302,6 +310,10 @@ def start_proc(partition: models.Partition) -> List[IspCtPair]:
             err_path = os.path.join(args.err_dir, f'{pid}.txt')
             ComUtils.write_content(err_path, error_content, cover=False, as_json=False, gargs=args)
             end_status: str = 'Error'
+        finally:
+            if is_zip:
+                shutil.rmtree(os.path.join(args.unzip_buf_root, pid))
+            ComUtils.print_info('Clean Zip', f'Clean up unzip buffer: {pid}', args)
 
         tn = dt.datetime.now()
         ComUtils.print_info(
@@ -422,6 +434,7 @@ def mask_sure_folder_exist(args: argparse.Namespace, **kwargs):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--data_root', type=str)
+    parser.add_argument('--unzip_buf_root', type=str)
     parser.add_argument('--patient_folder', type=str, required=False, help='single patient folder this is exclusive with `--data_root`')
     parser.add_argument('--isp_root', type=str)
     parser.add_argument('--large_ct', action='store_true', default=False)
