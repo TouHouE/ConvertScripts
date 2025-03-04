@@ -297,20 +297,24 @@ def filter_legal_patient_folder(
         args: argparse.Namespace, ignore_condition: Optional[List[PatientId]] = None
 ) -> List[PatientId]:
     """
+    This function filters legal patient folders based on given conditions.
 
     Args:
-        args: the script's argument
-        ignore_condition(Optional[List[PatientId])]: all ignored patient id
+        args (argparse.Namespace): The script's arguments. Must contain:
+            - data_root: The root directory where patient data is stored.
+            - include_zip: A boolean flag to include zip files.
+        ignore_condition (Optional[List[PatientId]]): A list of patient IDs to be ignored.
 
     Returns:
-        A list that store all patient id
+        List[PatientId]: A list of legal patient IDs.
     """
     legal_patient_list: List[PatientId] = list()
+    include_zip = getattr(args, 'include_zip', False)
 
     for x in os.listdir(args.data_root):
         if legal_patient_folder([args.data_root, x], ignore_condition):
             legal_patient_list.append(PatientId(x))
-        if legal_patient_zip([args.data_root, x], ignore_condition):
+        if legal_patient_zip([args.data_root, x], ignore_condition) and include_zip:
             legal_patient_list.append(PatientId(x.split('.')[0]))
     return legal_patient_list
 
