@@ -136,7 +136,6 @@ def build_ct_list(
             uid: str = set(cp2uid_map[cardiac_phase]).pop()
             fix_stime: bool = len(set(cp2time_map[cardiac_phase])) > 1
 
-
             buffer_ct = models.taipei.TaipeiCTHandler(
                 corresponding_dcm, pid, uid, args=args, cp=cardiac_phase, snum=cp2snum_map[cardiac_phase],
                 fix_tag0008_0030=fix_stime, output_dir=output_dir, buf_dir=buf_dir, verbose=args.verbose
@@ -170,9 +169,9 @@ def build_ct_isp_pair(
 
         if isinstance(confusion_ct, models.taipei.TaipeiCTDeduplicator):
             final_ct = confusion_ct(isp)
-            final_ct.store()    # Store .nii.gz ct file after deduplicate.
+            final_ct.store()  # Store .nii.gz ct file after deduplicate.
             final_ct.paired_isp.append(isp)
-            ct_list[idx] = final_ct     # Replace the deduplicator with only ct(`models.taipei.TaipeiCTHandler`)
+            ct_list[idx] = final_ct  # Replace the deduplicator with only ct(`models.taipei.TaipeiCTHandler`)
         else:
             final_ct = confusion_ct
         # Store the mask into disk.
@@ -189,7 +188,8 @@ def build_ct_isp_pair(
 
 
 def patient_proc(
-        pid: str, args: argparse.Namespace, ct_path_args: Optional[Dict[str, Any]] = None, isp_path_args=None, unzip_root=None
+        pid: str, args: argparse.Namespace, ct_path_args: Optional[Dict[str, Any]] = None, isp_path_args=None,
+        unzip_root=None
 ) -> Tuple[List[IspCtPair], List[str]]:
     """
     Process single patient data and return
@@ -262,8 +262,19 @@ def patient_proc(
 def start_proc(partition: models.Partition) -> List[IspCtPair]:
     """
     Each process will start from this method
+
     Args:
         partition(models.Partition): include assign sub data sequence, process id and user arguments.
+            The key in `partition.args` needed:
+                - `dcm2niix`
+                - `isp_dir`
+                - `ct_dir`
+                - `out_dir`
+                - `err_dir`
+                - `pid_dir`
+                - `mask_dir`
+                - `meta_dir`
+                - `patient_list`
 
     Returns:
         A list of IspCtPair ( that is a dict
@@ -286,8 +297,8 @@ def start_proc(partition: models.Partition) -> List[IspCtPair]:
         if os.path.exists((ppath := os.path.join(args.out_dir, pid))):
             # Previous remains data should be removed.
             ComUtils.print_info('Clean', f'Try to remove previous remain data: {ppath}', args)
-            shutil.rmtree(ppath)        
-        if os.path.exists((zip_path := os.path.join(args.data_root, f'{pid}.zip'))):
+            shutil.rmtree(ppath)
+        if os.path.exists((zip_path := os.path.join(args.data_root, f'{pid}.zip'))) and args.include_zip:
             ComUtils.print_info('Unzip', f'{pid} is .zip file, try to unzip it.', args)
             CUtils.unzip(args, args.data_root, zip_path)
             is_zip = True
@@ -301,7 +312,7 @@ def start_proc(partition: models.Partition) -> List[IspCtPair]:
             meta_pid_path = os.path.join(args.meta_dir, f'{pid}.json')
             ComUtils.write_content(meta_pid_path, pid_result, as_json=True, gargs=args)
 
-            if len(error_list_to_store) > 0:    # If no error don't write down any error message.
+            if len(error_list_to_store) > 0:  # If no error don't write down any error message.
                 error_pid_path = os.path.join(args.err_dir, f'{pid}.txt')
                 ComUtils.write_content(error_pid_path, error_list_to_store, cover=False, as_json=False, gargs=args)
             end_status: str = 'Done'
@@ -362,7 +373,7 @@ def initial_ignore_list(args: argparse.Namespace) -> List[PatientId]:
     return pdata
 
 
-def initial_legal_pair(ignore_list: list[str], args: argparse.Namespace) -> list[str]:
+def initial_legal_pair(ignore_list: list[str | PatientId], args: argparse.Namespace) -> list[str]:
     return CUtils.filter_legal_patient_folder(args, ignore_list)
 
 
@@ -433,12 +444,16 @@ def mask_sure_folder_exist(args: argparse.Namespace, **kwargs):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
+    parser.add_argument('--config', type=str)
     parser.add_argument('--data_root', type=str)
     parser.add_argument('--unzip_buf_root', type=str)
-    parser.add_argument('--patient_folder', type=str, required=False, help='single patient folder this is exclusive with `--data_root`')
+    parser.add_argument(
+        '--patient_folder', type=str, required=False,
+        help='single patient folder this is exclusive with `--data_root`'
+    )
     parser.add_argument('--isp_root', type=str)
     parser.add_argument('--large_ct', action='store_true', default=False)
-    parser.add_argument('--num_workers', type=int, default=1)
+    parser.add_argument('--num_workers', type=int)
     parser.add_argument('--worker_ratio', type=float, default=None)
     parser.add_argument('--ignore_path', type=str, default=None)
     parser.add_argument('--out_dir', type=str, default='out')
@@ -446,14 +461,18 @@ if __name__ == '__main__':
     parser.add_argument('--mask_dir', type=str, default='mask')
     parser.add_argument('--meta_dir', type=str, default='meta')
     parser.add_argument('--err_dir', type=str, default='err')
-    parser.add_argument('--dst_root', type=str, default='./NiiTaipei')
+    parser.add_argument('--dst_root', type=str)
     parser.add_argument('--dcm2niix', type=str, default='./lib/dcm2niix.exe')
     parser.add_argument('--test_ratio', type=float, required=False)
     parser.add_argument('--num_fold', type=int, required=False)
     parser.add_argument('--verbose', type=int, default=0)
     parser.add_argument('--num_patient', type=int, required=False)
-
-    global_args = parser.parse_args()
+    parser.add_argument(
+        '--include_zip', action='store_true', default=False,
+        help="If true, program will handle all patient zip files following '[0-9]{4}.zip' under `data_root`"
+    )
+    global_args = ComUtils.make_final_namespace(parser.parse_args())
+    # global_args = parser.parse_args()
     global_args.out_dir = os.path.join(global_args.dst_root, global_args.out_dir)
     global_args.meta_dir = os.path.join(global_args.dst_root, global_args.meta_dir)
     global_args.err_dir = os.path.join(global_args.dst_root, global_args.err_dir)
@@ -470,11 +489,11 @@ if __name__ == '__main__':
             format='[%(asctime)s][%(name)s][%(levelname)s][At %(filename)s %(funcName)s line:%(lineno)d] %(message)s'
         )
 
-
     mask_sure_folder_exist(global_args, gargs=global_args)
     try:
         main(global_args)
     except KeyboardInterrupt or Exception as e:
         import shutil
+
         shutil.rmtree(global_args.buf_dir)
         print('Remove {}'.format(global_args.buf_dir))
