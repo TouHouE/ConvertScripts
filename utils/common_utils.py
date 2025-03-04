@@ -13,7 +13,11 @@ import pydicom as pyd
 
 from utils import hooker
 
-__all__ = ['is_numerical', 'time2str', 'print_info', 'write_content', 'make_vista_style_table', 'load_json', 'load_dcm', 'make_final_namespace', 'delete_file']
+__all__ = [
+    'is_numerical', 'time2str', 'print_info', 'write_content',
+    'make_vista_style_table', 'load_json', 'load_dcm', 'make_final_namespace',
+    'delete_file'
+]
 
 
 def is_numerical(foo: str):
@@ -127,13 +131,16 @@ def load_dcm(path, **kwargs) -> pyd.FileDataset | None:
 
 def make_final_namespace(args: argparse.Namespace) -> argparse.Namespace:
     if (config_path := getattr(args, 'config', None)) is None:
+        print(f'No config file setting')
         return args
 
     config = load_json(config_path)
 
     for key, value in config.items():
         if getattr(args, key, None) is not None:
+            print(f'{key}: using commandline input')
             continue
+        print(f'{key}: using config file setting.')
         setattr(args, key, value)
     return args
 
