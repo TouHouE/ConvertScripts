@@ -158,7 +158,7 @@ class TaipeiISPHandler(DebugCard):
         assert union_mask is not None, f'No Tissue find in ISP.'
 
         try:
-            union_plaque = self._collect_plaque(union_mask, host_ct)
+            union_plaque = self._collect_plaque(host_ct)
             union_mask[union_plaque > 0] = LABEL_NAME2DIGIT['Plaque']
         except Exception as e:
             perr = os.path.join(self.args.err_dir, 'plaque_error.txt')
