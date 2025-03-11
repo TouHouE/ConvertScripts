@@ -159,7 +159,8 @@ class TaipeiISPHandler(DebugCard):
 
         try:
             union_plaque = self._collect_plaque(host_ct)
-            union_mask[union_plaque > 0] = LABEL_NAME2DIGIT['Plaque']
+            if union_plaque is not None:
+                union_mask[union_plaque > 0] = LABEL_NAME2DIGIT['Plaque']
         except Exception as e:
             perr = os.path.join(self.args.err_dir, 'plaque_error.txt')
             with open(perr, 'a+') as fout:
