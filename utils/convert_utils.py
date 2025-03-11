@@ -7,6 +7,7 @@ import argparse
 import traceback
 import datetime as dt
 import subprocess as sp
+from subprocess import CompletedProcess
 from typing import Tuple, Any, Union, Callable, List, Optional, Dict
 
 import pandas as pd
@@ -143,7 +144,8 @@ def get_init_prepare_df(dcm_collector) -> Dict[str, Any]:
 
 
 @disk_reconnect_watir
-def commandline(ct_output_path: str, buf_path: str, verbose: int = 0, dcm2niix_path: str = './lib/dcm2niix.exe', **pykwargs) -> None:
+def commandline(ct_output_path: str, buf_path: str, verbose: int = 0, dcm2niix_path: str = './lib/dcm2niix.exe', **pykwargs) -> \
+CompletedProcess[str]:
     show_error_msg = pykwargs.get('debug', False)
     kwargs = dict()
     dcm2niix_args = list()
@@ -151,22 +153,22 @@ def commandline(ct_output_path: str, buf_path: str, verbose: int = 0, dcm2niix_p
         kwargs = dict()
         # dcm2niix_args.extend(['-v', '2'])
         print(f'{" DCM2NIIX INFO ":=^40}')
-    else:
-        kwargs['stdout'] = sp.DEVNULL
-        kwargs['stderr'] = sp.STDOUT
 
-    sp.call(
+
+
+    result = sp.run(
         [dcm2niix_path,
          '-w', '1',  # if target is already, 1:overwrite it. 0:skip it
          '-z', 'y',  # Do .gz compress,
          *dcm2niix_args,
          '-o', ct_output_path,
          buf_path
-         ], **kwargs
+         ], capture_output=True, text=True
     )
+
     if verbose == 1:
         print(f'{" DCM2NIIX INFO End ":=^40}')
-    return None
+    return result
 
 def make_path(df: pd.DataFrame):
     pid = df['pid'].unique()[0].lower()
