@@ -160,22 +160,30 @@ def build_ct_isp_pair(
         isp: models.taipei.TaipeiISPHandler
 ) -> List[IspCtPair]:
     sub_pair: List[IspCtPair] = list()
+    # ct_list = list(filter(lambda x: x.nift_ct is not None, ct_list))
     # The `confusion_ct maybe a Deduplicator or a CTHandler, I suppose deduplicate and match to isp in same for loop.
+
     for idx, confusion_ct in enumerate(ct_list):
         if confusion_ct != isp:
             continue
         # The `final_ct` is the only ct after deduplicator
         final_ct: models.taipei.TaipeiCTHandler
 
-        if isinstance(confusion_ct, models.taipei.TaipeiCTDeduplicator):
+        if (is_deduplicator := isinstance(confusion_ct, models.taipei.TaipeiCTDeduplicator)):
             final_ct = confusion_ct(isp)
-            final_ct.store()  # Store .nii.gz ct file after deduplicate.
+            if final_ct.store() != 0:
+                continue# Store .nii.gz ct file after deduplicate.
             final_ct.paired_isp.append(isp)
             ct_list[idx] = final_ct  # Replace the deduplicator with only ct(`models.taipei.TaipeiCTHandler`)
         else:
             final_ct = confusion_ct
+        # breakpoint()
         # Store the mask into disk.
-        isp.store_mask(final_ct)
+        try:
+            isp.store_mask(final_ct)
+        except AssertionError as e:
+            continue
+        #     breakpoint()
         pair: IspCtPair = IspCtPair({
             'image': final_ct.get_store_path(),
             'cp': final_ct.cp,
@@ -245,13 +253,19 @@ def patient_proc(
         for idx, dup_ct in enumerate(ct_list):
             if isinstance(dup_ct, models.taipei.TaipeiCTDeduplicator):
                 ct = dup_ct(None)
-                ct.store()
+                if ct.store() != 0:
+                    continue
                 ct_list[idx] = ct
             # End of isinstance judge
         # End of iterative unpair CT
     # End of processing unpair CT
-
-    offal_ct = list(filter(lambda _ct: not _ct.has_pair, ct_list))
+    offal_ct = list()
+    for _ct in ct_list:
+        if isinstance(_ct, models.taipei.TaipeiCTDeduplicator):
+            continue
+        if not _ct.has_pair:
+            offal_ct.append(_ct)
+    # offal_ct = list(filter(lambda _ct: not _ct.has_pair, ct_list))
     if len(offal_isp) > 0 or len(offal_ct) > 0:
         CUtils.record_offal_sample(offal_isp, offal_ct, args)
         # pass
