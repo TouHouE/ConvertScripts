@@ -133,19 +133,18 @@ class TaipeiISPHandler(DebugCard):
             union_mask[organ_mask != 0] = LABEL_NAME2DIGIT[organ_name]
         return union_mask
 
-    def _collect_plaque(self, union_mask: np.ndarray, host_ct: nib.Nifti1Image) -> tuple[np.ndarray, np.ndarray | None]:
+    def _collect_plaque(self, host_ct: nib.Nifti1Image) -> np.ndarray | None:
         union_plaque: np.ndarray | None = None
         if self.plaque_num < 1:
-            return union_mask, union_plaque
+            return union_plaque
         union_plaque = np.zeros_like(host_ct.get_fdata(), dtype=np.int16)
 
         for pisp in self.path_list:
             pack_list = ISPH.reconstruct_plaque(pisp, host_ct)
             for pack in pack_list:
                 pmask, pname = pack
-                union_mask[pmask != 0] = LABEL_NAME2DIGIT['Plaque']
                 union_plaque[pmask != 0] = 1
-        return union_mask, union_plaque
+        return union_plaque
 
     @obj_hooker
     def store_mask(self, ct: 'TaipeiCTHandler'):
@@ -156,9 +155,11 @@ class TaipeiISPHandler(DebugCard):
         # store_path = f'{self.output_dir}/{self.pid}/{self.uid}/{ct.cp}/{self.folder_name}'
         os.makedirs(store_path, exist_ok=True)
         union_mask: np.ndarray = self._collect_tissue()
+        assert union_mask is not None, f'No Tissue find in ISP.'
 
         try:
-            union_mask, union_plaque = self._collect_plaque(union_mask, host_ct)
+            union_plaque = self._collect_plaque(union_mask, host_ct)
+            union_mask[union_plaque > 0] = LABEL_NAME2DIGIT['Plaque']
         except Exception as e:
             perr = os.path.join(self.args.err_dir, 'plaque_error.txt')
             with open(perr, 'a+') as fout:
@@ -299,23 +300,29 @@ class TaipeiCTHandler(DebugCard):
 
     def clean_buf(self):
         shutil.rmtree(self.buf_path)
-        del self.buf_path
+        # del self.buf_path
 
     def delete_self(self):
         shutil.rmtree(self.ct_output_path)
 
-    @obj_hooker
-    def store(self):
+    # @obj_hooker
+    def store(self) -> int:
         """
             Using CommandLine to convert the dicom series into a .nii.gz format file.
-        :return:
+        :return: 0 for ok, -1 for error
         """
         # Using dcm2niix to convert dicom file into nii.gz file.
         if self.snum == 2 and self.uid == "1.2.840.113654.2.70.1.299644915472865846444756882987166668049" and self.cp == 75.:
             # breakpoint()
             pass
 
-        CUtils.commandline(self.ct_output_path, self.buf_path, self.verbose, dcm2niix_path=self.args.dcm2niix, gargs=self.args)
+        result = CUtils.commandline(self.ct_output_path, self.buf_path, self.verbose, dcm2niix_path=self.args.dcm2niix, gargs=self.args)
+        if result.returncode != 0 and '-DmyInstanceNumberOrderIsNotSpatial' in result.stderr:
+            return -1
+
+
+
+
         logging.debug(os.listdir(self.ct_output_path))
         logging.debug(os.listdir(self.buf_path))
         logging.debug('\n\n')
@@ -325,7 +332,8 @@ class TaipeiCTHandler(DebugCard):
             self.final_path = list(filter(lambda x: not x.endswith('.json'), os.listdir(self.ct_output_path)))[0]
         except IndexError:
             CUtils.commandline(self.ct_output_path, self.buf_path, verbose=1, dcm2niix_path=self.args.dcm2niix, gargs=self.args)
-            raise
+            return -1
+            # raise
         # Turn it into abs path
         self.final_path = os.path.join(self.ct_output_path, self.final_path)
         self.nifit_ct = nib.load(self.final_path)
@@ -335,6 +343,7 @@ class TaipeiCTHandler(DebugCard):
             print(f'Final path   :{self.final_path}')
             print(f'CT Shape     :{self.nifit_ct.get_fdata().shape}')
         self.clean_buf()  # After all process, clean the buffer space.
+        return 0
 
     def get_store_path(self) -> str:
         _final_path: str = self.final_path
@@ -437,7 +446,7 @@ class TaipeiCTDeduplicator(object):
             ct.clean_buf()
             ct.delete_self()
 
-    def __call__(self, isp: TaipeiISPHandler):
+    def __call__(self, isp: TaipeiISPHandler) -> TaipeiCTHandler:
         elect_ct: TaipeiCTHandler | None = None
 
         if isp is None:
