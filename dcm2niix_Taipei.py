@@ -220,9 +220,11 @@ def patient_proc(
         ct_root = unzip_root
     isp_root = args.isp_root
     # Start Loading all CT dicom file and ISP dicom file into program.
+    ComUtils.print_info('Search CT', '', args=args)
     ct_pack = build_ct_list(ct_root, pid, args=args, **ct_path_args)
 
     ct_list: list[models.taipei.TaipeiCTDeduplicator | models.taipei.TaipeiCTHandler] = WRAP_DATA(ct_pack)
+    ComUtils.print_info('Search ISP', '', args=args)
     ct_error_list: list[str] = WRAP_ERR(ct_pack)
 
     isp_list: list[models.taipei.TaipeiISPHandler] = build_isp_list(isp_root, pid, args=args, **isp_path_args)
