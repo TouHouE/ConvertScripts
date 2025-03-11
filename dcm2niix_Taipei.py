@@ -424,13 +424,16 @@ def main(args: argparse.Namespace):
         print(f'Choosing {num_patient}')
     sub_world = np.array_split(legal_file_patient, nproc)
     sub_world = [models.Partition(proc_id=i, data=sworld, args=args) for i, sworld in enumerate(sub_world)]
+    initial_datetime = dt.datetime.now()
     if nproc == 1:  # Only 1 thread, The Pool object is useless
         sample_pair['data'].extend(start_proc(sub_world[0]))
     else:
         with mp.Pool(processes=nproc) as pool:
             all_results = pool.map(start_proc, sub_world)
-            for proc_result in all_results:
-                sample_pair['data'].extend(proc_result)
+        for proc_result in all_results:
+            sample_pair['data'].extend(proc_result)
+    total_datetime_cost = dt.datetime.now() - initial_datetime
+    print(f'Total time cost: {total_datetime_cost.total_seconds()}')
     meta_total_path = os.path.join(args.meta_dir, 'raw_sample.json')
     ComUtils.write_content(meta_total_path, sample_pair, as_json=True, gargs=args)
 
