@@ -1,4 +1,4 @@
-# Taipei-1 Usage Convert Scripts
+# Convert Scripts
 ## 1. Requirements
 - pydicom
 - nibabel
@@ -32,9 +32,33 @@ python store_each_plq.py ...
 ```shell
 python combine_multi_plque.py ... 
 ```
-
+## 5. To Match Text Report and CT
+1. Choosing a Script Based on CT Imaging Source (Taipei or Hsinchu)
+    - For Taipei:
+      Specify the `--meta_path` argument. Its value should be the same as the `--meta` argument used in `dcm2niix_Taipei.py`.
+      - Example:
+        ```shell=!
+        python text_match/maek_taipei_image_table.py \
+          --meta_path <path/to/your/meta/data>
+        ```
+    - For Hsinchu:
+      Specify the --hsinchu_root argument. Its value should be the same as the dst_root argument used in dcm2niix_Taipei.py.
+      - Example:
+        ```bash=!
+        python text_match/make_hsinchu_image_table.py \
+          --hsinchu_root <path/to/your/destination/root>
+        ```
+2. Merging Matched Image Cases and Reports
+  To change the matching conditions, please modify the `get_match_df` method.
+  - Example:
+    ```shell!
+    python text_match/merge_image_report.py \
+     --image_table_path <Path to the output from make_taipei_image_table.py or make_hsinchu_image_table.py> \
+     --report_label_path <Path to the desired report storage file> \
+     --mode [taipei / hsinchu]
+    ```
 ## PS
-- The dcm2niix program just download from [dcm2niix](https://github.com/rordenlab/dcm2niix/releases)
+- The dcm2niix program is available for download at [dcm2niix](https://github.com/rordenlab/dcm2niix/releases)
 - Cardiac Structure ID to Name
   1. Right Atrium
   2. Right Ventricle
