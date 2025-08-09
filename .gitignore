@@ -1,1 +1,12 @@
 isp_helper.py
+lib/*
+__pycache__/*
+err_logs/*
+err_msg/*
+test/*
+scripts/*
+ignore.json
+config/*
+res/*
+utils/__pycache__/*
+models/__pycache__/*
