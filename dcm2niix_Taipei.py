@@ -1,3 +1,9 @@
+"""
+If you wanna use multi-processing mode, please notice:
+DO NOT DIRECTLY ACCESS portable disk.
+"""
+
+
 import re
 import os
 import json
@@ -161,7 +167,7 @@ def build_ct_isp_pair(
 ) -> List[IspCtPair]:
     sub_pair: List[IspCtPair] = list()
     # ct_list = list(filter(lambda x: x.nift_ct is not None, ct_list))
-    # The `confusion_ct maybe a Deduplicator or a CTHandler, I suppose deduplicate and match to isp in same for loop.
+    # The `confusion_ct` maybe a Deduplicator or a CTHandler, I suppose deduplicate and match to isp in same for loop.
 
     for idx, confusion_ct in enumerate(ct_list):
         if confusion_ct != isp:
@@ -389,8 +395,8 @@ def initial_ignore_list(args: argparse.Namespace) -> List[PatientId]:
     return pdata
 
 
-def initial_legal_pair(ignore_list: list[str | PatientId], args: argparse.Namespace) -> list[str]:
-    return CUtils.filter_legal_patient_folder(args, ignore_list)
+def initial_legal_pair(ignore_list: list[str | PatientId], manual_list, args: argparse.Namespace) -> list[str]:
+    return CUtils.filter_legal_patient_folder(args, ignore_list, manual_list)
 
 
 def main(args: argparse.Namespace):
@@ -411,7 +417,8 @@ def main(args: argparse.Namespace):
     sample_pair = dict(name=DIGIT2LABEL_NAME, data=[])  # Initial the final store table
     if (patient_folder := getattr(args, 'patient_folder', None)) is None:
         ignore_list: list[PatientId] = initial_ignore_list(args)
-        legal_file_patient: List[str] = initial_legal_pair(ignore_list, args)
+        manual_pid_list = ComUtils.load_json(args.patient_list_json)
+        legal_file_patient: List[str] = initial_legal_pair(ignore_list, manual_pid_list, args)
         # TODO: This line only for debugging.
         # legal_file_patient = np.random.choice(legal_file_patient, size=100, replace=False)
         print(f'The number of patients waiting to be processed: {len(legal_file_patient)}')
@@ -437,6 +444,11 @@ def main(args: argparse.Namespace):
     total_datetime_cost = dt.datetime.now() - initial_datetime
     print(f'Total time cost: {total_datetime_cost.total_seconds()}')
     meta_total_path = os.path.join(args.meta_dir, 'raw_sample.json')
+    if os.path.exists(meta_total_path):
+        previous_total_meta = ComUtils.load_json(meta_total_path)
+        sample_pair['data'].extend(previous_total_meta['data'])
+        print(f'Extending previous total meta file...')
+
     ComUtils.write_content(meta_total_path, sample_pair, as_json=True, gargs=args)
 
     if all(needed_attr is not None for needed_attr in [getattr(args, 'test_ratio'), getattr(args, 'num_fold')]):
@@ -463,25 +475,47 @@ def mask_sure_folder_exist(args: argparse.Namespace, **kwargs):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--config', type=str)
-    parser.add_argument('--data_root', type=str)
-    parser.add_argument('--unzip_buf_root', type=str)
+    parser.add_argument(
+        '--config', type=str,
+        help="If you prefer use apply config file to instead of given command argument, you can apply the config json file for this argument."
+    )
+    parser.add_argument(
+        '--data_root', type=str,
+        help='this argument must point to patient folder\'s parent folder'
+    )
+    parser.add_argument('--unzip_buf_root', type=str, help='IGNORE THIS ONE')
     parser.add_argument(
         '--patient_folder', type=str, required=False,
         help='single patient folder this is exclusive with `--data_root`'
     )
+    parser.add_argument(
+        '--patient_list_json', type=str, required=False, 
+        help="Store all need to be process pid into this json file. This argument is combine with `--data_root`, \nthe element may like: ['0004', '0001', ...]"    
+    )
     parser.add_argument('--isp_root', type=str)
-    parser.add_argument('--large_ct', action='store_true', default=False)
-    parser.add_argument('--num_workers', type=int)
-    parser.add_argument('--worker_ratio', type=float, default=None)
-    parser.add_argument('--ignore_path', type=str, default=None)
+    parser.add_argument('--large_ct', action='store_true', default=False, help='IGNORE THIS ONE')
+    parser.add_argument(
+        '--num_workers', type=int, 
+        help="Decision use how many processors."
+    )
+    parser.add_argument(
+        '--worker_ratio', type=float, default=None,
+        help="Like `--num_workers` but for percentage."
+    )
+    parser.add_argument(
+        '--ignore_path', type=str, default=None,
+        help="That should point to `--meta_dir` if you wanna re-processing everytime."
+    )
     parser.add_argument('--out_dir', type=str, default='out')
     parser.add_argument('--buf_dir', type=str, default='buf')
     parser.add_argument('--mask_dir', type=str, default='mask')
     parser.add_argument('--meta_dir', type=str, default='meta')
     parser.add_argument('--err_dir', type=str, default='err')
-    parser.add_argument('--dst_root', type=str)
-    parser.add_argument('--dcm2niix', type=str, default='./lib/dcm2niix.exe')
+    parser.add_argument(
+        '--dst_root', type=str,
+        help="Where to save results."
+    )
+    parser.add_argument('--dcm2niix', type=str, default='./lib/dcm2niix')
     parser.add_argument('--test_ratio', type=float, required=False)
     parser.add_argument('--num_fold', type=int, required=False)
     parser.add_argument('--verbose', type=int, default=0)
