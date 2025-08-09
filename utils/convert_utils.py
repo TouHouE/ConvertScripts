@@ -9,6 +9,7 @@ import datetime as dt
 import subprocess as sp
 from subprocess import CompletedProcess
 from typing import Tuple, Any, Union, Callable, List, Optional, Dict
+from os.path import join, exists
 
 import pandas as pd
 import pydicom as pyd
@@ -296,7 +297,7 @@ def record_offal_sample(offal_isp, offal_ct, args):
 
 
 def filter_legal_patient_folder(
-        args: argparse.Namespace, ignore_condition: Optional[List[PatientId]] = None
+        args: argparse.Namespace, ignore_condition: Optional[List[PatientId]] = None, manual_pid_list = None
 ) -> List[PatientId]:
     """
     This function filters legal patient folders based on given conditions.
@@ -310,15 +311,21 @@ def filter_legal_patient_folder(
     Returns:
         List[PatientId]: A list of legal patient IDs.
     """
-    legal_patient_list: List[PatientId] = list()
-    include_zip = getattr(args, 'include_zip', False)
+    raw_patient_list = os.listdir(args.data_root)
+    if ignore_condition is None:
+        ignore_condition = {}  
+    if not isinstance(ignore_condition, set):
+        ignore_condition = set(ignore_condition)
+    if manual_pid_list is None:
+        manual_pid_list = set(filter(lambda x: '.zip' not in x, raw_patient_list))
+    if not isinstance(manual_pid_list, set):
+        manual_pid_list = set(manual_pid_list)
+    
+    folder_list = set(filter(lambda x: '.zip' not in x, raw_patient_list))
+    folder_list = folder_list & manual_pid_list
+    folder_list = folder_list - ignore_condition    
 
-    for x in os.listdir(args.data_root):
-        if legal_patient_folder([args.data_root, x], ignore_condition):
-            legal_patient_list.append(PatientId(x))
-        if legal_patient_zip([args.data_root, x], ignore_condition) and include_zip:
-            legal_patient_list.append(PatientId(x.split('.')[0]))
-    return legal_patient_list
+    return list(folder_list)
 
 
 def filter_legal_dcm(dcm_list: List[str], is_ct=True) -> List[str]:
