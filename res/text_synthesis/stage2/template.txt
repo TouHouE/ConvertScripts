@@ -1,0 +1,85 @@
+**Implicit Context:** All assessments are made under the assumption that the source image is a single, static 3D Voxel CT scan of the heart (representing one specific cardiac phase).
+
+**Rules for Assessment & Decision Making:**
+
+1.  **Source Applicability (Primary Filter):** Determine if the question can be reliably and directly answered *solely from this type of CT scan*.
+    * **Unanswerable Scenarios (leading to "Modified Answer": "This question cannot be answered from the provided imaging data", "Should drop": true, and no `Modified Question`):**
+        * Requires *multiple cardiac phases* (e.g., for ejection fraction, stroke volume, dynamic wall motion).
+        * Asks for *non-imaging data* (e.g., BMI, patient history, lab results, symptoms, age).
+        * Is an *interactive command* (e.g., "Show X," "Highlight Y").
+        * Requires information typically from *other modalities* not clearly visible on CT.
+        * The answer is a *hallucination* or medically impossible.
+
+2.  **Internal Consistency & Quality (If Answerable):**
+    * **Q&A Mismatch Handling (Crucial for Mixed Answers):** If the `Original Question` implies a simple `Category-Label` or `Multi-Choice` answer (e.g., "Is there X?", "Does Y exist?", "What is the severity?") but the `Original Answer` provides **more detailed, multi-faceted information** (e.g., "Yes" *and* specific measurements *and* a description of location/characteristics):
+        * **Action:** Modify the `Question` to explicitly request these details. This `Modified Question` should typically be formed by appending a phrase like "Please provide details," "Describe in more detail," or "Explain the findings." Choose the most natural and concise phrasing.
+        * The `Modified Answer` will then be the full detailed answer provided (possibly slightly cleaned).
+        * The `Modified Answer Type` for this scenario will be `Mixed`.
+    * **Answer needs modification (other than mismatch):** If the `Answer` is inaccurate, poorly phrased, or simply needs refinement, but it doesn't involve the Q&A mismatch described above.
+    * **Question needs modification (other than mismatch):** If the original `Question` is ambiguous or could be phrased more precisely for a better answer from the CT, and it's not a Q&A mismatch scenario.
+    * **Original Q&A is perfect:** In this case, `Modified Question` will be `null` and `Modified Answer` will be `null`.
+
+**Output Definitions (all fields are mandatory unless specified as nullable):**
+
+* **Question Topic [string]:** Categorize the question's primary focus. Choose from:
+    * `Coronary Artery Anatomy`
+    * `Stenosis & Plaque`
+    * `Myocardial Condition & Function`
+    * `Collateral & Perfusion`
+    * `Non-Coronary / Structural`
+* **Answer Type [string]:** Categorize the type of the `Answer` (referring to the `Modified Answer` if populated, or the `Original Answer` otherwise). Choose from:
+    * `Category-Label`: The answer is a simple categorical label or a boolean (e.g., "Yes", "No", "Present", "Absent", "Mild", "Moderate", "Severe").
+    * `Quantitive`: The answer is a numerical value, typically with units (e.g., "120 mL", "50%", "3.5 mm").
+    * `Multi-Choice`: The answer is a choice selected from a list of options. When *modifying* an answer to this type, the LLM will *generate* the options.
+    * `open-ended`: The answer is a detailed, descriptive sentence or paragraph providing specific clinical observations or explanations. This *excludes* answers that are merely generic prefixes, simple adjectives, or meaningless descriptive phrases.
+    * `Mixed`: The answer combines multiple distinct types of information (e.g., a boolean response with quantitative data and a descriptive explanation). This type is specifically for answers that blend categories and are designed to provide comprehensive details.
+    * `Unanswerable`: Use this if the question cannot be answered from the provided CT data, as per Source Applicability rules.
+* **Relate Organ digits [list of integer]:** Provide a list of integer IDs corresponding to the primary organs/structures mentioned in the *question* (original or `Modified Question` if populated) that are relevant to a cardiac CT. If no specific organ, or if the question is unanswerable, provide an empty list `[]`.
+    * **Your Organ ID Mapping:**
+        * 1: Right Atrium
+        * 2: Right Ventricle
+        * 3: Left Atrium
+        * 4: Left Ventricle
+        * 5: MyocardiumLV (left ventricular myocardium)
+        * 6: Aorta
+        * 7: Coronary Arteries
+        * 8: Fat (covering whole cardiac region)
+        * 9: Bypass
+        * 10: Plaque
+* **Original Question [string]:** The exact original question from the input.
+* **Modified Question [string / None]:** *Nullable.* If the original `Question` needs modification (for clarity, better fit with the answer, or to propose a genuinely new but related valuable question), provide the updated question here. Otherwise, set to `null`.
+* **Modified Answer [string / None]:** *Nullable.*
+    * If the question is unanswerable from the CT, provide: "This question cannot be answered from the provided imaging data."
+    * If the original `Answer` is correct and suitable for the (original or `Modified Question`), set this to `null`.
+    * If the original `Answer` needs modification (inaccuracy, chaotic type, poor phrasing, or adjustment to a `Modified Question`), provide the proposed correct/replacement answer here.
+        * **Specific Rule for Quantitive Type:** If `Modified Answer Type` is `Quantitive`, the `Modified Answer` must contain *only* the numerical value, **optionally** followed immediately by its unit. Do not include any prefixes or other descriptive text. Examples: "1.3", "0", "102", "32-39%", "113 (mL)", "3.5 mm", "500".
+        * **Specific Rule for Category-Label Type:** If `Modified Answer Type` is `Category-Label`, the `Modified Answer` must be a **single, simple word or very short phrase (max 3 words for clarity like "Not Present")**. It must **NOT** be a sentence, contain additional adjectives beyond the category, or conversational elements. Examples: "Yes", "No", "Mild", "Patent", "Moderate", "Absent". (e.g., "No, there is no evidence" is NOT allowed here; it must be just "No" or "Absent").
+        * **Specific Rule for Multi-Choice Type:** If `Modified Answer Type` is `Multi-Choice`, the `Modified Answer` must be a string representing a complete list of generated options. This list must include at least 4 options (the correct one and a minimum of 3 wrong answers/distractors). Each option must be clearly labeled with an uppercase letter (A, B, C, D...). The correct option must be explicitly indicated. Example format: "A. Patent, B. Minimal, C. Mild (Correct), D. Moderate, E. Severe."
+* **Modified Answer Type [string / None]:** *Nullable.* If `Modified Answer` is populated (i.e., not `null`), specify its type here using the same categories as `Answer Type`. Otherwise, `null`.
+* **Modified Question Type [string / None]:** *Nullable.* If `Modified Question` is populated (i.e., not `null`), specify its `Question Topic` here using the same categories as `Question Topic`. Otherwise, `null`.
+* **Should drop [bool]:** `true` if the question *cannot* be answered from a single-phase cardiac CT scan (as per Source Applicability rules), or if the Q&A is fundamentally irrelevant/malformed beyond simple correction. `false` otherwise.
+
+**Output Format:** Your output must be a single JSON string. DO NOT include any other text, explanations, or conversational elements outside the JSON.
+
+---
+
+[INPUT DATA POINT]
+Question: [The medical question]
+Answer: [The answer currently in the dataset]
+
+---
+
+[TASK INSTRUCTION]
+```json
+{
+  "Question Topic": "[Your chosen topic]",
+  "Answer Type": "[Your chosen answer type]",
+  "Relate Organ digits": [/* list of integers */],
+  "Original Question": "[Original question text]",
+  "Modified Question": "[/* modified question text or null */]",
+  "Modified Answer": "[/* modified answer text or null */]",
+  "Modified Answer Type": "[/* modified answer type string or null */]",
+  "Modified Question Type": "[/* modified question topic string or null */]",
+  "Should drop": [/* true or false */]
+}
+```

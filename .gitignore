@@ -7,6 +7,5 @@ test/*
 scripts/*
 ignore.json
 config/*
-res/*
 utils/__pycache__/*
 models/__pycache__/*
